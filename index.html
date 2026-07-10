@@ -357,8 +357,9 @@
     <input id="set-eventname" value="ACTO INDEPENDENCIA 2026">
   </div>
   <div class="field">
-    <label>Fecha del evento</label>
-    <input type="date" id="set-eventdate" value="2026-07-09">
+    <label>Fecha del evento (día/mes/año)</label>
+    <input type="date" id="set-eventdate" value="2026-07-09" lang="es-AR">
+    <p class="hint" id="eventdate-preview"></p>
   </div>
   <div class="field">
     <label>Días de disponibilidad de las fotos</label>
@@ -419,7 +420,7 @@
 </div>
 
 <div class="banner" id="format-notice">
-  La copia en papel no incluye gratis el archivo digital: son dos productos con precio distinto. Elegí digital, papel, o las dos opciones para cada foto.
+  La copia en papel <b>NO</b> incluye gratis el archivo digital: son dos productos con precio distinto. Elegí digital, papel, o las dos opciones para cada foto.
 </div>
 <div class="banner warn" id="retention-notice"></div>
 
@@ -435,7 +436,7 @@
   <div class="modal">
     <button class="close-x" id="close-modal">✕</button>
     <h2 id="modal-title">Tu selección</h2>
-    <div class="disclaimer" id="modal-disclaimer">Recordá: el papel no incluye el digital. Tildá lo que quieras llevar de cada foto.</div>
+    <div class="disclaimer" id="modal-disclaimer">Recordá: el papel <b>NO</b> incluye el digital. Tildá lo que quieras llevar de cada foto.</div>
     <div class="field" id="alumno-field">
       <label>Nombre y apellido del alumno/a</label>
       <input id="alumno-input" placeholder="Ej: Pérez Martín">
@@ -610,6 +611,7 @@ function syncSettingsInputs(){
   document.getElementById('set-modality').value = settings.modality;
   document.getElementById('set-digital-price').value = settings.digitalPrice;
   document.getElementById('set-paper-price').value = settings.paperPrice;
+  updateEventDatePreview();
 }
 
 async function loadRemoteConfig(){
@@ -725,7 +727,16 @@ document.getElementById('toggle-upload').addEventListener('click', ()=>{
 
 document.getElementById('set-schoolname').addEventListener('input', e=>{ settings.schoolName = e.target.value; updateHeader(); });
 document.getElementById('set-eventname').addEventListener('input', e=>{ settings.eventName = e.target.value; updateHeader(); });
-document.getElementById('set-eventdate').addEventListener('input', e=>{ settings.eventDate = e.target.value; render(); });
+function updateEventDatePreview(){
+  const el = document.getElementById('eventdate-preview');
+  if(settings.eventDate){
+    el.textContent = 'Vas a cargar: ' + formatDate(new Date(settings.eventDate + 'T00:00:00')) + ' (día/mes/año)';
+  } else {
+    el.textContent = '';
+  }
+}
+document.getElementById('set-eventdate').addEventListener('input', e=>{ settings.eventDate = e.target.value; updateEventDatePreview(); render(); });
+updateEventDatePreview();
 document.getElementById('set-retention').addEventListener('input', e=>{ settings.retentionDays = Number(e.target.value)||0; render(); });
 document.getElementById('set-alias').addEventListener('input', e=>{ settings.alias = e.target.value; });
 document.getElementById('set-whatsapp').addEventListener('input', e=>{ settings.whatsapp = e.target.value; });
