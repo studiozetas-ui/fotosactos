@@ -471,6 +471,30 @@ function buildSet(count){
 
 let PHOTOS = buildSet(18);
 let nextPhotoNum = 19;
+let photosAreDemo = true;
+
+function computeNextPhotoNum(list){
+  let max = 0;
+  list.forEach(p=>{
+    const m = /(\d+)/.exec(p.id);
+    if(m) max = Math.max(max, parseInt(m[1],10));
+  });
+  return max + 1;
+}
+
+async function loadRemotePhotos(){
+  if(!settings.appsScriptUrl) return;
+  try{
+    const resp = await fetch(settings.appsScriptUrl + '?action=listFotos');
+    const list = await resp.json();
+    if(Array.isArray(list) && list.length){
+      PHOTOS = list;
+      photosAreDemo = false;
+      nextPhotoNum = computeNextPhotoNum(list);
+      render();
+    }
+  }catch(err){ /* sin conexión: seguimos mostrando las fotos de muestra */ }
+}
 
 let settings = {
   schoolName: 'COLEGIO CIMDIP',
@@ -723,6 +747,11 @@ document.getElementById('set-paper-price').addEventListener('input', e=>{
 document.getElementById('file-input').addEventListener('change', async e=>{
   const files = Array.from(e.target.files);
   const statusEl = document.getElementById('upload-status');
+
+  if(photosAreDemo && settings.appsScriptUrl){
+    PHOTOS = [];
+    photosAreDemo = false;
+  }
 
   for(const file of files){
     const id = 'A-' + String(nextPhotoNum++).padStart(3,'0');
@@ -1213,6 +1242,7 @@ async function downloadAllZip(items, triggerBtn){
 render();
 updateCartBar();
 loadRemoteConfig();
+loadRemotePhotos();
 </script>
 </body>
 </html>
