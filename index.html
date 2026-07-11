@@ -460,6 +460,12 @@
 <script>
 const urlParams = new URLSearchParams(location.search);
 const docenteMode = urlParams.get('acceso') === 'docente';
+const adminMode = urlParams.get('admin') === '1';
+
+if(!adminMode){
+  document.getElementById('toggle-settings').style.display = 'none';
+  document.getElementById('toggle-upload').style.display = 'none';
+}
 
 function buildSet(count){
   const arr = [];
@@ -766,6 +772,9 @@ document.getElementById('file-input').addEventListener('change', async e=>{
     photosAreDemo = false;
   }
 
+  let subidasOk = 0;
+  let subidasError = 0;
+
   for(const file of files){
     const id = 'A-' + String(nextPhotoNum++).padStart(3,'0');
     if(settings.appsScriptUrl){
@@ -785,17 +794,24 @@ document.getElementById('file-input').addEventListener('change', async e=>{
         const json = await resp.json();
         if(!json.ok) throw new Error(json.error || 'error desconocido');
         PHOTOS.push({ id, url: json.url });
+        subidasOk++;
       }catch(err){
         PHOTOS.push({ id, url: URL.createObjectURL(file) });
-        statusEl.textContent = `${id}: no se pudo subir a Drive (queda solo local). Revisá la URL del Apps Script.`;
+        subidasError++;
       }
     } else {
       PHOTOS.push({ id, url: URL.createObjectURL(file) });
+      subidasError++;
     }
   }
 
-  statusEl.textContent = `${files.length} foto/s cargada/s.` +
-    (settings.appsScriptUrl ? ' Subidas a Drive.' : ' Guardadas solo en este navegador.');
+  if(subidasError === 0){
+    statusEl.textContent = `${subidasOk} foto/s subidas a Drive correctamente.`;
+  } else if(subidasOk === 0){
+    statusEl.textContent = `Ninguna se pudo subir a Drive (quedaron solo locales, se van a perder al recargar). Revisá la URL del Apps Script.`;
+  } else {
+    statusEl.textContent = `${subidasOk} subidas a Drive, ${subidasError} fallaron y quedaron solo locales. Revisá la URL del Apps Script.`;
+  }
   render();
   e.target.value = '';
 });
