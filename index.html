@@ -414,9 +414,11 @@
   <p class="hint">Si configuraste la URL del Apps Script en "Configurar venta", estas fotos se suben directo a la carpeta "Fotos" de tu Google Drive y quedan con un link estable. Si no la configuraste, se cargan solo en este navegador para probar el diseño.</p>
   <input type="file" id="file-input" accept="image/*" multiple>
   <p class="hint" id="upload-status"></p>
-  <div style="display:flex; gap:8px; margin-top:12px;">
+  <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
     <button class="btn secondary" id="clear-samples">Vaciar fotos de muestra</button>
+    <button class="btn secondary" id="clear-drive-photos">🗑️ Vaciar TODAS las fotos de Drive</button>
   </div>
+  <p class="hint" id="clear-drive-status"></p>
 </div>
 
 <div class="banner" id="format-notice">
@@ -800,6 +802,33 @@ document.getElementById('file-input').addEventListener('change', async e=>{
 document.getElementById('clear-samples').addEventListener('click', ()=>{
   PHOTOS = PHOTOS.filter(p => !p.url.includes('picsum.photos'));
   render();
+});
+
+document.getElementById('clear-drive-photos').addEventListener('click', async ()=>{
+  const statusEl = document.getElementById('clear-drive-status');
+  if(!settings.appsScriptUrl){
+    statusEl.textContent = 'Falta la URL del Apps Script.';
+    return;
+  }
+  const ok = confirm('Esto borra TODAS las fotos subidas a la carpeta "Fotos" de Drive y limpia la galería para todos los que abran el link. ¿Confirmás?');
+  if(!ok) return;
+  statusEl.textContent = 'Borrando...';
+  try{
+    const resp = await fetch(settings.appsScriptUrl, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      body: JSON.stringify({ type: 'clearFotos' })
+    });
+    const json = await resp.json();
+    if(!json.ok) throw new Error(json.error || 'error');
+    PHOTOS = [];
+    photosAreDemo = false;
+    nextPhotoNum = 1;
+    statusEl.textContent = `Listo, se borraron ${json.borradas} foto/s. Ya podés subir las definitivas.`;
+    render();
+  }catch(err){
+    statusEl.textContent = 'No se pudo borrar (revisá la URL del Apps Script).';
+  }
 });
 
 openCartBtn.addEventListener('click', openCart);
