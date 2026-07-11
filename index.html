@@ -150,6 +150,15 @@
     border-radius:12px;
     aspect-ratio:4/3;
     object-fit:cover;
+    -webkit-touch-callout:none;
+    -webkit-user-select:none;
+    user-select:none;
+    -webkit-user-drag:none;
+  }
+  .lightbox img{
+    -webkit-touch-callout:none;
+    -webkit-user-select:none;
+    user-select:none;
   }
   .frame-label{
     display:flex;
@@ -668,6 +677,7 @@ function applyLogo(dataUrl){
   logoImg.src = dataUrl;
   logoImg.style.display = 'block';
   logoPlaceholder.style.display = 'none';
+  loadLogoWatermarkImage(dataUrl);
 }
 const savedLogo = localStorage.getItem('logoDataUrl');
 if(savedLogo) applyLogo(savedLogo);
@@ -679,6 +689,18 @@ document.getElementById('set-logo').addEventListener('change', async e=>{
   localStorage.setItem('logoDataUrl', dataUrl);
   applyLogo(dataUrl);
 });
+
+// El mismo logo.png que se ve arriba en el encabezado se reutiliza como
+// marca de agua sobre las fotos (no hace falta subirlo aparte).
+let logoWatermarkImg = null;
+function loadLogoWatermarkImage(url){
+  if(!url) return;
+  const img = new Image();
+  img.onload = ()=>{ logoWatermarkImg = img; if(typeof render === 'function') render(); };
+  img.onerror = ()=>{ /* si el logo no cargó, la marca de agua usa el texto de respaldo */ };
+  img.src = url;
+}
+if(!savedLogo) loadLogoWatermarkImage('logo.png');
 
 function computeDocenteLink(){
   const url = new URL(location.href);
@@ -834,7 +856,7 @@ function render(){
     const div = document.createElement('div');
     div.className = 'frame' + (isSel ? ' selected':'');
     div.innerHTML = `
-      <img src="${photo.url}" crossorigin="anonymous" loading="lazy">
+      <img class="frame-img" alt="${photo.id}" oncontextmenu="return false" loading="lazy">
       <svg class="circle-mark" viewBox="0 0 100 75">
         <path d="M10,38 C8,15 35,4 55,6 C82,8 94,25 90,42 C87,62 60,72 35,68 C14,65 12,52 10,38 Z"
           fill="none" stroke="#aeabf5" stroke-width="2.5" opacity="0.85"/>
@@ -846,8 +868,9 @@ function render(){
     div.addEventListener('click', ()=> toggleSelect(photo));
     div.querySelector('.zoom-btn').addEventListener('click', (e)=>{
       e.stopPropagation();
-      openLightbox(photo.url);
+      openLightbox(photo);
     });
+    loadWatermarked(photo.url, dataUrl=>{ div.querySelector('.frame-img').src = dataUrl; }, 700);
     grid.appendChild(div);
   });
 }
@@ -865,9 +888,72 @@ function updatePriceLegend(){
   legend.innerHTML = parts.join('');
 }
 
-function openLightbox(url){
-  document.getElementById('lightbox-img').src = url;
+// --- Marca de agua en el navegador (solo para la vista previa) ---
+// Las fotos se muestran siempre con una marca de agua superpuesta por Canvas.
+// El archivo original y limpio SOLO se usa en la descarga final, después de
+// pagar (o del flujo gratuito docente). Así, si alguien intenta guardar la
+// imagen desde la galería (clic derecho / mantener apretado), lo que se
+// lleva es la versión con marca de agua, no el archivo original.
+function watermarkLabel(){
+  return (settings.schoolName || 'MUESTRA').toUpperCase() + ' — VISTA PREVIA';
+}
+
+function watermarkedDataUrl(img, label, maxSize){
+  let w = img.naturalWidth, h = img.naturalHeight;
+  if(w > maxSize){
+    h = Math.round(h * (maxSize / w));
+    w = maxSize;
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+
+  ctx.save();
+  ctx.globalAlpha = 0.20;
+  ctx.translate(w/2, h/2);
+
+  if(logoWatermarkImg){
+    const lw = logoWatermarkImg.naturalWidth, lh = logoWatermarkImg.naturalHeight;
+    // Un solo logo grande, centrado, cubriendo la mayor parte de la foto.
+    const scale = Math.min((w * 0.82) / lw, (h * 0.82) / lh);
+    const dw = lw * scale, dh = lh * scale;
+    ctx.drawImage(logoWatermarkImg, -dw/2, -dh/2, dw, dh);
+  } else {
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${Math.max(14, Math.round(w/9))}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, 0, 0);
+  }
+  ctx.restore();
+
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+function loadWatermarked(url, onReady, maxSize){
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = ()=>{
+    try{
+      onReady(watermarkedDataUrl(img, watermarkLabel(), maxSize));
+    }catch(err){
+      // Si el navegador bloquea el canvas por CORS, mostramos el original
+      // como respaldo (mejor eso que una foto rota, aunque en ese caso
+      // se pierde la protección de la marca de agua).
+      onReady(url);
+    }
+  };
+  img.onerror = ()=> onReady(url);
+  img.src = url;
+}
+
+function openLightbox(photo){
+  const imgEl = document.getElementById('lightbox-img');
+  imgEl.src = '';
   document.getElementById('lightbox').classList.add('open');
+  loadWatermarked(photo.url, dataUrl=>{ imgEl.src = dataUrl; }, 1400);
 }
 document.getElementById('lightbox-close').addEventListener('click', ()=>{
   document.getElementById('lightbox').classList.remove('open');
@@ -1075,7 +1161,7 @@ function renderCartItems(){
     return `
       <div class="cart-item">
         <div class="row1">
-          <img src="${p.url}">
+          <img class="cart-thumb" data-url="${p.url}" oncontextmenu="return false">
           <div class="info">${p.id}</div>
           <button class="rm" data-id="${p.id}">✕</button>
         </div>
@@ -1083,6 +1169,10 @@ function renderCartItems(){
       </div>
     `;
   }).join('');
+
+  wrap.querySelectorAll('.cart-thumb').forEach(el=>{
+    loadWatermarked(el.dataset.url, dataUrl=>{ el.src = dataUrl; }, 200);
+  });
 
   wrap.querySelectorAll('.rm').forEach(b=>{
     b.addEventListener('click', (e)=>{
