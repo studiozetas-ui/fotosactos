@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Venta de Fotos de Actos</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -38,7 +39,7 @@
     text-align:center;
   }
   #logo-area{ display:flex; justify-content:center; margin-bottom:12px; }
-  #logo-img{ max-height:64px; max-width:220px; border-radius:10px; display:none; }
+  #logo-img{ max-height:78px; max-width:260px; border-radius:10px; display:none; }
   header .kicker{
     margin:0 0 10px; font-size:11px; letter-spacing:3px;
     color:var(--lavender); font-weight:700; text-transform:uppercase;
@@ -47,11 +48,11 @@
     margin:0 0 6px;
     font-family:'Baloo 2', sans-serif;
     font-weight:700;
-    font-size:26px;
+    font-size:30px;
     color:#fff;
     letter-spacing:.5px;
   }
-  header .subtitle{margin:0;color:var(--lavender);font-size:15px;font-weight:600;}
+  header .subtitle{margin:0;color:var(--lavender);font-size:16px;font-weight:600;}
   header .avail{margin:10px 0 0;color:var(--mint);font-size:12.5px;font-weight:700;letter-spacing:.3px;}
 
   .toolbar{
@@ -309,6 +310,111 @@
     padding:10px;border-radius:10px;text-decoration:none;font-size:13px;font-weight:700;
     border:1px solid var(--border);font-family:'Nunito',sans-serif;cursor:pointer;width:100%;
   }
+
+  .howto-panel{
+    max-width:900px;
+    margin:24px auto 0;
+    padding:20px 22px;
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:18px;
+  }
+  .howto-title{
+    margin:0 0 12px;
+    font-family:'Baloo 2', sans-serif;
+    font-size:20px;
+    color:#fff;
+  }
+  .howto-steps{
+    margin:0 0 16px;
+    padding-left:20px;
+    color:var(--muted);
+    font-size:14.5px;
+    line-height:1.9;
+  }
+  .howto-steps li{ margin-bottom:2px; }
+  .price-legend{
+    display:flex;
+    flex-wrap:wrap;
+    gap:12px;
+    margin-bottom:12px;
+  }
+  .price-item{
+    background:rgba(52,211,153,.1);
+    border:1px solid rgba(52,211,153,.3);
+    color:var(--mint);
+    padding:8px 14px;
+    border-radius:12px;
+    font-size:13.5px;
+    font-weight:700;
+  }
+  .price-item b{ color:#fff; }
+  .howto-note{
+    margin:0;
+    font-size:12.5px;
+    color:var(--warn);
+  }
+
+  .loading-box{
+    text-align:center;
+    color:var(--muted);
+    font-size:14.5px;
+    padding:60px 20px;
+    display:none;
+  }
+
+  .zoom-btn{
+    position:absolute;
+    top:8px;
+    left:8px;
+    width:28px;height:28px;
+    border-radius:50%;
+    background:rgba(21,15,46,.8);
+    border:1px solid var(--border);
+    color:#fff;
+    font-size:13px;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+    z-index:2;
+  }
+
+  .lightbox{
+    position:fixed;inset:0;
+    background:rgba(8,5,18,.92);
+    display:none;
+    align-items:center;justify-content:center;
+    z-index:70;
+    padding:24px;
+  }
+  .lightbox.open{ display:flex; }
+  .lightbox img{
+    max-width:100%;max-height:88vh;
+    border-radius:14px;
+    box-shadow:0 10px 40px rgba(0,0,0,.5);
+  }
+  .lightbox-close{
+    position:absolute;
+    top:18px;right:22px;
+    background:rgba(255,255,255,.1);
+    border:1px solid var(--border);
+    color:#fff;
+    width:40px;height:40px;
+    border-radius:50%;
+    font-size:19px;
+    cursor:pointer;
+  }
+
+  @media (max-width: 600px){
+    header{ padding:36px 16px 16px; }
+    header h1{ font-size:25px; }
+    header .kicker{ font-size:11px; }
+    header .subtitle{ font-size:14.5px; }
+    .toolbar{ gap:8px; }
+    .tab.settings-toggle{ padding:8px 14px; font-size:12.5px; }
+    .howto-panel{ margin:20px 12px 0; padding:18px; }
+    .grid{ grid-template-columns:repeat(auto-fill, minmax(148px,1fr)); gap:14px; padding:0 12px; }
+    .modal{ max-height:92vh; }
+  }
 </style>
 </head>
 <body>
@@ -421,11 +527,20 @@
   <p class="hint" id="clear-drive-status"></p>
 </div>
 
-<div class="banner" id="format-notice">
-  La copia en papel <b>NO</b> incluye gratis el archivo digital: son dos productos con precio distinto. Elegí digital, papel, o las dos opciones para cada foto.
+<div class="howto-panel" id="howto-panel">
+  <h2 class="howto-title">Elegí tus fotos del acto</h2>
+  <ol class="howto-steps">
+    <li>Elegí las fotos que quieras, en digital y/o en papel.</li>
+    <li>Pagá por transferencia al alias.</li>
+    <li>Cargá la foto del comprobante de pago.</li>
+    <li>Descargá tus fotos digitales (si corresponde) o retiralas en papel en la escuela.</li>
+  </ol>
+  <div class="price-legend" id="price-legend"></div>
+  <p class="howto-note">El papel <b>NO</b> incluye el archivo digital: son dos productos distintos.</p>
 </div>
 <div class="banner warn" id="retention-notice"></div>
 
+<div class="loading-box" id="loading-box">Cargando fotos del acto...</div>
 <div class="grid" id="grid"></div>
 <div class="expired-box" id="expired-box" style="display:none;"></div>
 
@@ -456,6 +571,11 @@
   </div>
 </div>
 
+<div class="lightbox" id="lightbox">
+  <button class="lightbox-close" id="lightbox-close">✕</button>
+  <img id="lightbox-img" src="" alt="">
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 const urlParams = new URLSearchParams(location.search);
@@ -478,9 +598,10 @@ function buildSet(count){
   return arr;
 }
 
-let PHOTOS = buildSet(18);
-let nextPhotoNum = 19;
-let photosAreDemo = true;
+let PHOTOS = [];
+let nextPhotoNum = 1;
+let photosAreDemo = false;
+let photosLoading = true;
 
 function computeNextPhotoNum(list){
   let max = 0;
@@ -492,17 +613,25 @@ function computeNextPhotoNum(list){
 }
 
 async function loadRemotePhotos(){
-  if(!settings.appsScriptUrl) return;
+  if(!settings.appsScriptUrl){
+    // Sin backend configurado: mostramos fotos de muestra solo para previsualizar el diseño.
+    PHOTOS = buildSet(18);
+    photosAreDemo = true;
+    photosLoading = false;
+    render();
+    return;
+  }
   try{
     const resp = await fetch(settings.appsScriptUrl + '?action=listFotos');
     const list = await resp.json();
-    if(Array.isArray(list) && list.length){
-      PHOTOS = list;
-      photosAreDemo = false;
-      nextPhotoNum = computeNextPhotoNum(list);
-      render();
-    }
-  }catch(err){ /* sin conexión: seguimos mostrando las fotos de muestra */ }
+    PHOTOS = Array.isArray(list) ? list : [];
+    photosAreDemo = false;
+    nextPhotoNum = computeNextPhotoNum(PHOTOS);
+  }catch(err){
+    PHOTOS = [];
+  }
+  photosLoading = false;
+  render();
 }
 
 let settings = {
@@ -676,6 +805,18 @@ document.getElementById('save-config-btn').addEventListener('click', saveConfig)
 
 function render(){
   updateHeader();
+  updatePriceLegend();
+
+  const loadingBox = document.getElementById('loading-box');
+  if(photosLoading){
+    loadingBox.style.display = 'block';
+    grid.style.display = 'none';
+    expiredBox.style.display = 'none';
+    document.querySelector('.cartbar').style.display = 'none';
+    return;
+  }
+  loadingBox.style.display = 'none';
+
   const active = isEventActive();
   grid.style.display = active ? 'grid' : 'none';
   expiredBox.style.display = active ? 'none' : 'block';
@@ -698,13 +839,42 @@ function render(){
         <path d="M10,38 C8,15 35,4 55,6 C82,8 94,25 90,42 C87,62 60,72 35,68 C14,65 12,52 10,38 Z"
           fill="none" stroke="#aeabf5" stroke-width="2.5" opacity="0.85"/>
       </svg>
+      <button class="zoom-btn" title="Ver más grande">🔍</button>
       <div class="badge">${isSel ? '✓' : ''}</div>
       <div class="frame-label"><span>${photo.id}</span><span class="frame-price">${priceLabel}</span></div>
     `;
     div.addEventListener('click', ()=> toggleSelect(photo));
+    div.querySelector('.zoom-btn').addEventListener('click', (e)=>{
+      e.stopPropagation();
+      openLightbox(photo.url);
+    });
     grid.appendChild(div);
   });
 }
+
+function updatePriceLegend(){
+  const modes = allowedFormats();
+  const legend = document.getElementById('price-legend');
+  const parts = [];
+  if(modes.includes('digital')){
+    parts.push(`<div class="price-item">📱 Archivo digital: <b>${docenteMode ? 'Gratis' : '$'+settings.digitalPrice}</b></div>`);
+  }
+  if(modes.includes('paper')){
+    parts.push(`<div class="price-item">🖨️ Papel 15x21 (única medida): <b>$${settings.paperPrice}</b></div>`);
+  }
+  legend.innerHTML = parts.join('');
+}
+
+function openLightbox(url){
+  document.getElementById('lightbox-img').src = url;
+  document.getElementById('lightbox').classList.add('open');
+}
+document.getElementById('lightbox-close').addEventListener('click', ()=>{
+  document.getElementById('lightbox').classList.remove('open');
+});
+document.getElementById('lightbox').addEventListener('click', (e)=>{
+  if(e.target.id === 'lightbox') document.getElementById('lightbox').classList.remove('open');
+});
 
 function toggleSelect(photo){
   if(selected[photo.id]){
