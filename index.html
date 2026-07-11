@@ -346,7 +346,7 @@
   <div class="field">
     <label>Logo (opcional, para probar acá)</label>
     <input type="file" id="set-logo" accept="image/*">
-    <p class="hint">Esto se ve solo en tu navegador mientras probás. Para que quede igual en todos los celulares al subir a GitHub, mandame el archivo del logo y lo dejo fijo en el código.</p>
+    <p class="hint">Esto se ve solo en tu navegador mientras probás. Para que quede igual en todos los celulares al subir a GitHub, subí el archivo del logo como "logo.png" junto al html.</p>
   </div>
   <div class="field">
     <label>Nombre del colegio</label>
@@ -666,11 +666,11 @@ async function saveConfig(){
     if(!json.ok) throw new Error(json.error || 'error');
     statusEl.textContent = 'Guardado. Ya se aplica para cualquiera que abra el link.';
   }catch(err){
-    statusEl.textContent = 'No se pudo guardar (revisá la URL del Apps Script).';
+    statusEl.textContent = 'No se pudo guardar. Error: ' + (err && err.message ? err.message : err);
   }
   btn.disabled = false;
   btn.textContent = '💾 Guardar configuración';
-  setTimeout(()=> statusEl.textContent = '', 5000);
+  setTimeout(()=> statusEl.textContent = '', 6000);
 }
 document.getElementById('save-config-btn').addEventListener('click', saveConfig);
 
@@ -774,6 +774,7 @@ document.getElementById('file-input').addEventListener('change', async e=>{
 
   let subidasOk = 0;
   let subidasError = 0;
+  let ultimoError = '';
 
   for(const file of files){
     const id = 'A-' + String(nextPhotoNum++).padStart(3,'0');
@@ -798,19 +799,21 @@ document.getElementById('file-input').addEventListener('change', async e=>{
       }catch(err){
         PHOTOS.push({ id, url: URL.createObjectURL(file) });
         subidasError++;
+        ultimoError = err && err.message ? err.message : String(err);
       }
     } else {
       PHOTOS.push({ id, url: URL.createObjectURL(file) });
       subidasError++;
+      ultimoError = 'no hay URL de Apps Script configurada';
     }
   }
 
   if(subidasError === 0){
     statusEl.textContent = `${subidasOk} foto/s subidas a Drive correctamente.`;
   } else if(subidasOk === 0){
-    statusEl.textContent = `Ninguna se pudo subir a Drive (quedaron solo locales, se van a perder al recargar). Revisá la URL del Apps Script.`;
+    statusEl.textContent = `Ninguna se pudo subir. Error: ${ultimoError}`;
   } else {
-    statusEl.textContent = `${subidasOk} subidas a Drive, ${subidasError} fallaron y quedaron solo locales. Revisá la URL del Apps Script.`;
+    statusEl.textContent = `${subidasOk} subidas a Drive, ${subidasError} fallaron. Error: ${ultimoError}`;
   }
   render();
   e.target.value = '';
@@ -843,7 +846,7 @@ document.getElementById('clear-drive-photos').addEventListener('click', async ()
     statusEl.textContent = `Listo, se borraron ${json.borradas} foto/s. Ya podés subir las definitivas.`;
     render();
   }catch(err){
-    statusEl.textContent = 'No se pudo borrar (revisá la URL del Apps Script).';
+    statusEl.textContent = 'No se pudo borrar. Error: ' + (err && err.message ? err.message : err);
   }
 });
 
@@ -1065,7 +1068,7 @@ async function confirmPayment(){
       box.innerHTML = `Comprobante recibido y registrado (pedido <b>${pedidoId}</b>). Quedó pendiente de que lo cruces con Mercado Pago.`;
     }catch(err){
       box.className = 'status warn';
-      box.textContent = 'No se pudo registrar automáticamente (revisá la URL del Apps Script en Configurar venta). Mandalo por WhatsApp mientras tanto.';
+      box.textContent = 'No se pudo registrar automáticamente. Error: ' + (err && err.message ? err.message : err);
     }
   } else {
     box.className = 'status pending';
@@ -1121,7 +1124,7 @@ async function startFreeFlow(){
       box.innerHTML = `Descarga registrada (pedido <b>${pedidoId}</b>).`;
     }catch(err){
       box.className = 'status warn';
-      box.textContent = 'No se pudo registrar el pedido (revisá la URL del Apps Script), pero podés descargar igual.';
+      box.textContent = 'No se pudo registrar el pedido, pero podés descargar igual. Error: ' + (err && err.message ? err.message : err);
     }
   } else {
     box.className = 'status ok';
