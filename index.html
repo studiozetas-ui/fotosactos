@@ -393,6 +393,26 @@
     display:none;
   }
 
+  .pedido-item{
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:12px 14px;
+    margin-bottom:10px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    background:rgba(0,0,0,.15);
+  }
+  .pedido-info{ font-size:13px; color:var(--text); flex:1; min-width:160px; line-height:1.6; }
+  .pedido-info .hint{ display:block; }
+  .pedido-actions{ display:flex; flex-direction:column; gap:6px; align-items:stretch; min-width:140px; }
+  .pedido-actions a, .pedido-actions button{
+    font-size:12.5px; padding:8px 12px; text-align:center; text-decoration:none;
+  }
+  .pedido-actions .status{ margin:0; padding:6px 10px; text-align:center; font-size:12px; }
+
   .zoom-btn{
     position:absolute;
     top:8px;
@@ -469,6 +489,7 @@
 <div class="toolbar">
   <button class="tab settings-toggle" id="toggle-settings">⚙ Configurar venta</button>
   <button class="tab settings-toggle" id="toggle-upload">📤 Subir fotos</button>
+  <button class="tab settings-toggle" id="toggle-pedidos">📋 Pedidos</button>
   <button class="tab settings-toggle" id="open-myorders">🧾 Mis compras</button>
   <button class="tab settings-toggle" id="share-link">🔗 Compartir</button>
 </div>
@@ -562,6 +583,12 @@
   <p class="hint" id="generar-pedidos-status"></p>
 </div>
 
+<div class="settings-panel" id="pedidos-panel">
+  <h3>Pedidos</h3>
+  <button class="btn secondary" id="refresh-pedidos-btn" style="width:100%;margin-bottom:12px;">🔄 Actualizar lista</button>
+  <div id="pedidos-list"></div>
+</div>
+
 <div class="howto-panel" id="howto-panel">
   <h2 class="howto-title">Elegí tus fotos del acto</h2>
   <ol class="howto-steps">
@@ -620,6 +647,7 @@ const adminMode = urlParams.get('admin') === '1';
 if(!adminMode){
   document.getElementById('toggle-settings').style.display = 'none';
   document.getElementById('toggle-upload').style.display = 'none';
+  document.getElementById('toggle-pedidos').style.display = 'none';
 }
 
 function buildSet(count){
@@ -1012,12 +1040,82 @@ function updateCartBar(){
 
 document.getElementById('toggle-settings').addEventListener('click', ()=>{
   uploadPanel.classList.remove('open');
+  document.getElementById('pedidos-panel').classList.remove('open');
   settingsPanel.classList.toggle('open');
 });
 document.getElementById('toggle-upload').addEventListener('click', ()=>{
   settingsPanel.classList.remove('open');
+  document.getElementById('pedidos-panel').classList.remove('open');
   uploadPanel.classList.toggle('open');
 });
+
+document.getElementById('toggle-pedidos').addEventListener('click', ()=>{
+  settingsPanel.classList.remove('open');
+  uploadPanel.classList.remove('open');
+  const panel = document.getElementById('pedidos-panel');
+  panel.classList.toggle('open');
+  if(panel.classList.contains('open')) loadPedidosAdmin();
+});
+document.getElementById('refresh-pedidos-btn').addEventListener('click', loadPedidosAdmin);
+
+async function loadPedidosAdmin(){
+  const listEl = document.getElementById('pedidos-list');
+  if(!settings.appsScriptUrl){
+    listEl.innerHTML = '<p class="hint">Falta la URL del Apps Script.</p>';
+    return;
+  }
+  listEl.innerHTML = '<p class="hint">Cargando...</p>';
+  try{
+    const resp = await fetch(settings.appsScriptUrl + '?action=listPedidos');
+    const rows = await resp.json();
+    const pedidos = (Array.isArray(rows) ? rows : []).slice().reverse();
+    if(pedidos.length === 0){
+      listEl.innerHTML = '<p class="hint">Todavía no hay pedidos.</p>';
+      return;
+    }
+    const ESTADOS_LISTOS = ['verificado', 'ok', 'confirmado', 'pagado'];
+    listEl.innerHTML = pedidos.map(p=>{
+      const verificado = ESTADOS_LISTOS.includes((p.estado || '').toLowerCase());
+      return `
+        <div class="pedido-item">
+          <div class="pedido-info">
+            <b>${p.alumno || 'Sin nombre'}</b>${p.grado ? ' — ' + p.grado : ''}
+            <span class="hint">${p.fotos || ''}</span>
+            <span class="hint">Total: $${p.total || 0} — Estado: ${p.estado || 'Pendiente'}</span>
+          </div>
+          <div class="pedido-actions">
+            ${p.comprobante ? `<a href="${p.comprobante}" target="_blank" class="btn secondary">Ver comprobante</a>` : ''}
+            ${verificado
+              ? `<span class="status ok" style="display:block;">Verificado ✓</span>`
+              : `<button class="btn verificar-btn" data-id="${p.pedidoId}">✅ Marcar verificado</button>`}
+          </div>
+        </div>
+      `;
+    }).join('');
+    listEl.querySelectorAll('.verificar-btn').forEach(btn=>{
+      btn.addEventListener('click', async (e)=>{
+        const pedidoId = e.target.dataset.id;
+        e.target.disabled = true;
+        e.target.textContent = 'Guardando...';
+        try{
+          const resp2 = await fetch(settings.appsScriptUrl, {
+            method: 'POST',
+            headers: {'Content-Type': 'text/plain;charset=utf-8'},
+            body: JSON.stringify({ type: 'marcarVerificado', pedidoId })
+          });
+          const json2 = await resp2.json();
+          if(!json2.ok) throw new Error(json2.error || 'error');
+          loadPedidosAdmin();
+        }catch(err){
+          e.target.disabled = false;
+          e.target.textContent = 'Error, reintentar';
+        }
+      });
+    });
+  }catch(err){
+    listEl.innerHTML = '<p class="hint">No se pudo cargar. Error: ' + (err && err.message ? err.message : err) + '</p>';
+  }
+}
 
 document.getElementById('set-schoolname').addEventListener('input', e=>{ settings.schoolName = e.target.value; updateHeader(); });
 document.getElementById('set-eventname').addEventListener('input', e=>{ settings.eventName = e.target.value; updateHeader(); });
@@ -1443,24 +1541,16 @@ function startPaymentFlow(){
   currentGrado = data.grado;
 
   const total = grandTotal();
-  const items = Object.values(selected);
   document.getElementById('checkout-actions').innerHTML = '';
-  const waMsg = encodeURIComponent(
-    `Hola! Soy ${data.alumno}, de ${data.grado}. Te mando el comprobante de mi compra de fotos de "${settings.eventName}". Total: $${total}. Fotos: ${items.map(p=>p.id).join(', ')}`
-  );
   const flow = document.getElementById('alias-flow');
   flow.innerHTML = `
-    <div class="status pending" style="display:block;">Transferí <b>$${total}</b> al siguiente alias y mandanos el comprobante. Liberamos la descarga digital y/o la reserva de papel apenas lo confirmamos.</div>
+    <div class="status pending" style="display:block;">Transferí <b>$${total}</b> al siguiente alias y después cargá el comprobante. Apenas lo cargues, liberamos la descarga digital y/o la reserva de papel.</div>
     <div class="alias-box">
       <span id="alias-text">${settings.alias}</span>
       <button id="copy-alias">Copiar alias</button>
     </div>
-    <div class="field">
-      <label>Foto del comprobante de pago</label>
-      <input type="file" id="receipt-file" accept="image/*">
-    </div>
-    <a class="btn wa" style="display:block;text-align:center;text-decoration:none;margin-bottom:8px;" target="_blank" href="https://wa.me/${settings.whatsapp}?text=${waMsg}">Enviar comprobante por WhatsApp (opcional)</a>
-    <button class="btn secondary" id="confirm-sent" style="width:100%;">Confirmar comprobante</button>
+    <input type="file" id="receipt-file" accept="image/*" style="display:none;">
+    <button type="button" class="btn" id="receipt-trigger" style="width:100%;">📎 Cargar comprobante</button>
   `;
   document.getElementById('copy-alias').addEventListener('click', ()=>{
     navigator.clipboard.writeText(settings.alias).then(()=>{
@@ -1469,7 +1559,15 @@ function startPaymentFlow(){
       setTimeout(()=> b.textContent = 'Copiar alias', 1500);
     });
   });
-  document.getElementById('confirm-sent').addEventListener('click', confirmPayment);
+  const fileInput = document.getElementById('receipt-file');
+  const triggerBtn = document.getElementById('receipt-trigger');
+  triggerBtn.addEventListener('click', ()=> fileInput.click());
+  fileInput.addEventListener('change', async ()=>{
+    if(!fileInput.files[0]) return;
+    triggerBtn.disabled = true;
+    triggerBtn.textContent = '⏳ Subiendo comprobante...';
+    await confirmPayment();
+  });
 }
 
 function fileToBase64(file){
@@ -1527,7 +1625,7 @@ async function confirmPayment(){
       const json = await resp.json();
       if(!json.ok) throw new Error(json.error || 'error desconocido');
       box.className = 'status ok';
-      box.innerHTML = `Comprobante recibido y registrado (pedido <b>${pedidoId}</b>). Quedó pendiente de que lo cruces con Mercado Pago.`;
+      box.innerHTML = `¡Comprobante recibido! Pedido <b>${pedidoId}</b>.`;
     }catch(err){
       box.className = 'status warn';
       box.textContent = 'No se pudo registrar automáticamente. Error: ' + (err && err.message ? err.message : err);
@@ -1703,7 +1801,21 @@ function openMyOrders(){
     });
   }
 
-  document.getElementById('dl-section').innerHTML = '';
+  const dlSection = document.getElementById('dl-section');
+  dlSection.innerHTML = '';
+  if(list.length > 0){
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'btn secondary';
+    clearBtn.style.width = '100%';
+    clearBtn.textContent = '🗑️ Borrar historial de este dispositivo';
+    clearBtn.addEventListener('click', ()=>{
+      const ok = confirm('Esto borra tu lista de compras guardada en este navegador (no afecta lo ya registrado en el sistema). ¿Confirmás?');
+      if(!ok) return;
+      localStorage.removeItem('misCompras');
+      openMyOrders();
+    });
+    dlSection.appendChild(clearBtn);
+  }
   overlay.classList.add('open');
 }
 
