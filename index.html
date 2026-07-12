@@ -275,9 +275,30 @@
   }
   .fmt-row{
     display:flex;gap:16px;margin:8px 0 0 62px;font-size:12.5px;color:var(--muted);
+    flex-wrap:wrap;align-items:center;
   }
   .fmt-row label{display:flex;align-items:center;gap:5px;cursor:pointer;}
   .fmt-static{margin:8px 0 0 62px;font-size:12.5px;color:var(--muted);}
+  .qty-box{
+    display:flex;align-items:center;gap:8px;
+    background:rgba(0,0,0,.25);
+    border:1px solid var(--border);
+    border-radius:999px;
+    padding:3px 6px;
+  }
+  .qty-btn{
+    width:22px;height:22px;
+    border-radius:50%;
+    border:none;
+    background:linear-gradient(135deg, var(--violet), var(--violet-dark));
+    color:#fff;
+    font-size:14px;
+    font-weight:800;
+    line-height:1;
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .qty-val{ min-width:14px; text-align:center; color:#fff; font-weight:700; }
   .disclaimer{
     font-size:12px;color:var(--warn);background:rgba(245,178,92,.1);
     border:1px solid rgba(245,178,92,.3);padding:10px 12px;border-radius:12px;margin:10px 0;
@@ -534,6 +555,11 @@
     <button class="btn secondary" id="clear-drive-photos">🗑️ Vaciar TODAS las fotos de Drive</button>
   </div>
   <p class="hint" id="clear-drive-status"></p>
+  <hr>
+  <h3>Pedidos en papel</h3>
+  <p class="hint">Marcá "Verificado" en la columna Estado de la planilla a los pedidos que ya confirmaste, y después apretá este botón: descarga un único .bat con esos pedidos ya adentro. Poné ese .bat directo en la misma carpeta donde tenés tus fotos originales (con el mismo nombre de archivo que subiste a la app) y ejecutalo ahí: crea una carpeta "Pedidos" con las copias listas para imprimir.</p>
+  <button class="btn secondary" id="generar-pedidos-btn" style="width:100%;">🖨️ Generar pedidos de papel (.bat)</button>
+  <p class="hint" id="generar-pedidos-status"></p>
 </div>
 
 <div class="howto-panel" id="howto-panel">
@@ -734,7 +760,11 @@ function allowedFormats(){
 
 function defaultFormatChoice(){
   const modes = allowedFormats();
-  return { digital: modes.includes('digital'), paper: modes.length===1 && modes[0]==='paper' };
+  return {
+    digital: modes.includes('digital'),
+    paper: modes.length===1 && modes[0]==='paper',
+    paperQty: 1
+  };
 }
 
 function computeExpiration(){
@@ -1033,7 +1063,18 @@ document.getElementById('file-input').addEventListener('change', async e=>{
   let ultimoError = '';
 
   for(const file of files){
-    const id = 'A-' + String(nextPhotoNum++).padStart(3,'0');
+    // Usamos el nombre original del archivo (sin extensión) como ID, así
+    // coincide con el nombre que ya tiene la foto en tu cámara/celular y
+    // no hace falta renombrar nada para armar los pedidos de papel después.
+    const baseName = file.name.replace(/\.[^/.]+$/, '') || ('foto-' + nextPhotoNum);
+    let id = baseName;
+    let dupCount = 2;
+    const existingIds = new Set(PHOTOS.map(p => p.id));
+    while(existingIds.has(id)){
+      id = baseName + '_' + dupCount;
+      dupCount++;
+    }
+    nextPhotoNum++;
     if(settings.appsScriptUrl){
       statusEl.textContent = `Subiendo ${id} a Drive...`;
       try{
@@ -1106,6 +1147,145 @@ document.getElementById('clear-drive-photos').addEventListener('click', async ()
   }
 });
 
+// --- Herramienta local para armar los pedidos de papel ---
+// El botón "Generar pedidos de papel" trae los pedidos YA VERIFICADOS
+// directo de la planilla (vía listPedidos) y arma un .py con esos datos
+// embebidos adentro: no hace falta exportar CSV ni tocar la planilla a
+// mano. Matchea las fotos por nombre de archivo original (el mismo que
+// se sube en "Subir fotos").
+function parseFotosPapelJS(campoFotos){
+  const items = [];
+  const re = /([^,()]+)\(([^)]*)\)/g;
+  let m;
+  while((m = re.exec(campoFotos || '')) !== null){
+    const fotoId = m[1].trim();
+    const tags = m[2].toUpperCase();
+    const qtyMatch = tags.match(/P(\d+)/);
+    if(qtyMatch){
+      items.push({ id: fotoId, qty: Math.max(1, parseInt(qtyMatch[1], 10)) });
+    }
+  }
+  return items;
+}
+
+// Un único .bat, sin Python: usa PowerShell (viene instalado en cualquier
+// Windows). El .bat se ejecuta DENTRO de la carpeta donde están las fotos
+// originales y ahí mismo crea la carpeta "Pedidos" con las copias.
+const ARMAR_PEDIDOS_BAT_TEMPLATE = String.raw`@echo off
+chcp 65001 >nul
+cd /d "%~dp0"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$c=Get-Content -Raw -LiteralPath '%~f0';$m=':::PS_START:::';$ps=$c.Substring($c.IndexOf($m)+$m.Length);Invoke-Expression $ps"
+echo.
+pause
+exit /b
+
+:::PS_START:::
+$ErrorActionPreference = 'Stop'
+try {
+$json = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('__PEDIDOS_B64__'))
+$pedidos = @($json | ConvertFrom-Json)
+$fotosDir = Get-Location
+$outDir = Join-Path $fotosDir 'Pedidos'
+New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+$exts = @('.jpg','.jpeg','.png','.JPG','.JPEG','.PNG')
+$procesados = 0
+$faltantes = New-Object System.Collections.Generic.List[string]
+
+foreach ($p in $pedidos) {
+    $alumno = $p.alumno
+    $grado = $p.grado
+    if ($grado) { $baseNombre = "$alumno - $grado" } else { $baseNombre = "$alumno" }
+
+    foreach ($f in @($p.fotos)) {
+        $fid = $f.id
+        $qty = [int]$f.qty
+        if ($qty -lt 1) { $qty = 1 }
+
+        $origen = $null
+        foreach ($ext in $exts) {
+            $cand = Join-Path $fotosDir ($fid + $ext)
+            if (Test-Path $cand) { $origen = $cand; break }
+        }
+        if (-not $origen) {
+            $faltantes.Add("$fid (pedido de $alumno)")
+            continue
+        }
+
+        if ($qty -gt 1) { $prefijo = "X$qty " } else { $prefijo = "" }
+        $nombreBase = ($prefijo + $baseNombre) -replace '[<>:"/\\|?*]', ''
+        $nombreBase = $nombreBase.Trim()
+        if (-not $nombreBase) { $nombreBase = "SIN_NOMBRE" }
+        $extOrig = [System.IO.Path]::GetExtension($origen)
+        $destino = Join-Path $outDir ($nombreBase + $extOrig)
+        $n = 2
+        while (Test-Path $destino) {
+            $destino = Join-Path $outDir ("$nombreBase ($n)" + $extOrig)
+            $n++
+        }
+        Copy-Item $origen $destino
+        $procesados++
+        Write-Host ("  OK: " + (Split-Path $destino -Leaf))
+    }
+}
+
+Write-Host ""
+Write-Host "Fotos copiadas: $procesados"
+Write-Host "Carpeta de pedidos: $outDir"
+if ($faltantes.Count -gt 0) {
+    Write-Host ""
+    Write-Host 'No encontre el archivo original de estas fotos:'
+    foreach ($item in $faltantes) { Write-Host "  - $item" }
+}
+} catch {
+    Write-Host "ERROR: $($_.Exception.Message)"
+}
+`;
+
+function downloadTextFile(filename, content){
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+document.getElementById('generar-pedidos-btn').addEventListener('click', async ()=>{
+  const statusEl = document.getElementById('generar-pedidos-status');
+  if(!settings.appsScriptUrl){
+    statusEl.textContent = 'Falta la URL del Apps Script.';
+    return;
+  }
+  statusEl.textContent = 'Buscando pedidos verificados...';
+  try{
+    const resp = await fetch(settings.appsScriptUrl + '?action=listPedidos');
+    const rows = await resp.json();
+    const ESTADOS_LISTOS = ['verificado', 'ok', 'confirmado', 'pagado'];
+    const pedidos = [];
+    (Array.isArray(rows) ? rows : []).forEach(row=>{
+      const estado = (row.estado || '').toString().trim().toLowerCase();
+      if(!ESTADOS_LISTOS.includes(estado)) return;
+      const fotosPapel = parseFotosPapelJS(row.fotos);
+      if(fotosPapel.length === 0) return;
+      pedidos.push({ alumno: row.alumno || 'SIN_NOMBRE', grado: row.grado || '', fotos: fotosPapel });
+    });
+
+    if(pedidos.length === 0){
+      statusEl.textContent = 'No hay pedidos verificados con fotos en papel todavía.';
+      return;
+    }
+
+    const json = JSON.stringify(pedidos);
+    const b64 = btoa(unescape(encodeURIComponent(json)));
+    const batContent = ARMAR_PEDIDOS_BAT_TEMPLATE.replace('__PEDIDOS_B64__', b64);
+    downloadTextFile('armar_pedidos_papel.bat', batContent);
+    statusEl.textContent = `Listo: ${pedidos.length} pedido/s con fotos en papel. Descargado.`;
+  }catch(err){
+    statusEl.textContent = 'No se pudo generar. Error: ' + (err && err.message ? err.message : err);
+  }
+});
+
 openCartBtn.addEventListener('click', openCart);
 document.getElementById('open-myorders').addEventListener('click', openMyOrders);
 document.getElementById('close-modal').addEventListener('click', ()=>overlay.classList.remove('open'));
@@ -1114,7 +1294,7 @@ function itemTotal(id){
   const fc = formatChoice[id];
   let t = 0;
   if(fc.digital) t += docenteMode ? 0 : settings.digitalPrice;
-  if(fc.paper) t += settings.paperPrice;
+  if(fc.paper) t += settings.paperPrice * (fc.paperQty || 1);
   return t;
 }
 
@@ -1139,6 +1319,25 @@ function openCart(){
   overlay.classList.add('open');
 }
 
+function buildFormatRow(p, fc, modes){
+  const parts = [];
+  if(modes.includes('digital')){
+    const digitalLabel = docenteMode ? 'Digital (Gratis)' : `Digital ($${settings.digitalPrice})`;
+    parts.push(`<label><input type="checkbox" class="fmt-digital" data-id="${p.id}" ${fc.digital?'checked':''}> ${digitalLabel}</label>`);
+  }
+  if(modes.includes('paper')){
+    parts.push(`<label><input type="checkbox" class="fmt-paper" data-id="${p.id}" ${fc.paper?'checked':''}> Papel ($${settings.paperPrice})</label>`);
+    if(fc.paper){
+      parts.push(`<span class="qty-box">
+        <button type="button" class="qty-btn" data-id="${p.id}" data-delta="-1">−</button>
+        <span class="qty-val">${fc.paperQty || 1}</span>
+        <button type="button" class="qty-btn" data-id="${p.id}" data-delta="1">+</button>
+      </span>`);
+    }
+  }
+  return `<div class="fmt-row">${parts.join('')}</div>`;
+}
+
 function renderCartItems(){
   const wrap = document.getElementById('cart-items');
   const items = Object.values(selected);
@@ -1146,18 +1345,7 @@ function renderCartItems(){
 
   wrap.innerHTML = items.map(p=>{
     const fc = formatChoice[p.id];
-    let fmtHtml;
-    if(modes.length === 1){
-      const onlyLabel = modes[0]==='digital' ? (docenteMode ? 'Digital (Gratis)' : `Digital ($${settings.digitalPrice})`) : `Papel ($${settings.paperPrice})`;
-      fmtHtml = `<div class="fmt-static">${onlyLabel}</div>`;
-    } else {
-      const digitalLabel = docenteMode ? 'Digital (Gratis)' : `Digital ($${settings.digitalPrice})`;
-      fmtHtml = `
-        <div class="fmt-row">
-          <label><input type="checkbox" class="fmt-digital" data-id="${p.id}" ${fc.digital?'checked':''}> ${digitalLabel}</label>
-          <label><input type="checkbox" class="fmt-paper" data-id="${p.id}" ${fc.paper?'checked':''}> Papel ($${settings.paperPrice})</label>
-        </div>`;
-    }
+    const fmtHtml = buildFormatRow(p, fc, modes);
     return `
       <div class="cart-item">
         <div class="row1">
@@ -1193,8 +1381,19 @@ function renderCartItems(){
   });
   wrap.querySelectorAll('.fmt-paper').forEach(cb=>{
     cb.addEventListener('change', e=>{
-      formatChoice[e.target.dataset.id].paper = e.target.checked;
-      updateTotalsAndActions();
+      const fc = formatChoice[e.target.dataset.id];
+      fc.paper = e.target.checked;
+      if(!fc.paper) fc.paperQty = 1;
+      renderCartItems();
+    });
+  });
+  wrap.querySelectorAll('.qty-btn').forEach(b=>{
+    b.addEventListener('click', (e)=>{
+      const id = e.currentTarget.dataset.id;
+      const delta = parseInt(e.currentTarget.dataset.delta, 10);
+      const fc = formatChoice[id];
+      fc.paperQty = Math.max(1, (fc.paperQty || 1) + delta);
+      renderCartItems();
     });
   });
 
@@ -1303,7 +1502,10 @@ async function confirmPayment(){
       const dataUrl = await fileToBase64(file);
       const fotosDesc = items.map(p=>{
         const fc = formatChoice[p.id];
-        const tags = [fc.digital?'D':null, fc.paper?'P':null].filter(Boolean).join('+');
+        const tags = [
+          fc.digital ? 'D' : null,
+          fc.paper ? ('P' + (fc.paperQty || 1)) : null
+        ].filter(Boolean).join('+');
         return `${p.id}(${tags})`;
       }).join(', ');
       const resp = await fetch(settings.appsScriptUrl, {
@@ -1360,7 +1562,10 @@ async function startFreeFlow(){
     try{
       const fotosDesc = items.map(p=>{
         const fc = formatChoice[p.id];
-        const tags = [fc.digital?'D':null, fc.paper?'P':null].filter(Boolean).join('+');
+        const tags = [
+          fc.digital ? 'D' : null,
+          fc.paper ? ('P' + (fc.paperQty || 1)) : null
+        ].filter(Boolean).join('+');
         return `${p.id}(${tags})`;
       }).join(', ');
       const resp = await fetch(settings.appsScriptUrl, {
