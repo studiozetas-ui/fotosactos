@@ -969,7 +969,7 @@ function watermarkedDataUrl(img, label, maxSize){
   ctx.drawImage(img, 0, 0, w, h);
 
   ctx.save();
-  ctx.globalAlpha = 0.20;
+  ctx.globalAlpha = 0.25;
   ctx.translate(w/2, h/2);
 
   if(logoWatermarkImg){
@@ -1269,10 +1269,43 @@ function parseFotosPapelJS(campoFotos){
 // Un único .bat, sin Python: usa PowerShell (viene instalado en cualquier
 // Windows). El .bat se ejecuta DENTRO de la carpeta donde están las fotos
 // originales y ahí mismo crea la carpeta "Pedidos" con las copias.
+const ARMAR_PEDIDOS_BOOTSTRAP_PS = String.raw`$ErrorActionPreference = 'Stop'
+try {
+    $path = $env:PEDIDOS_BAT_PATH
+    $c = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)
+    $m = ':::PS_B64_START:::'
+    $i = $c.IndexOf($m)
+    if ($i -lt 0) { throw "No encontre el marcador de datos en el archivo." }
+    $raw = $c.Substring($i + $m.Length)
+    $b64 = ($raw -replace '[^A-Za-z0-9+/=]', '')
+    $bytes = [System.Convert]::FromBase64String($b64)
+    $ps = [System.Text.Encoding]::UTF8.GetString($bytes)
+    $tmp = [System.IO.Path]::Combine($env:TEMP, ('armar_pedidos_' + [guid]::NewGuid().ToString('N') + '.ps1'))
+    [System.IO.File]::WriteAllText($tmp, $ps, [System.Text.Encoding]::UTF8)
+    & $tmp
+    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+} catch {
+    Write-Host ("ERROR AL PREPARAR: " + $_.Exception.Message)
+}
+`;
+
+function toUtf16LeBase64(str){
+  const bytes = new Uint8Array(str.length * 2);
+  for (let i = 0; i < str.length; i++){
+    const code = str.charCodeAt(i);
+    bytes[i*2] = code & 0xFF;
+    bytes[i*2+1] = (code >> 8) & 0xFF;
+  }
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
 const ARMAR_PEDIDOS_BAT_HEADER = String.raw`@echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$c=Get-Content -Raw -LiteralPath '%~f0';$m=':::PS_B64_START:::';$b64=$c.Substring($c.IndexOf($m)+$m.Length).Trim();$bytes=[System.Convert]::FromBase64String($b64);$ps=[System.Text.Encoding]::UTF8.GetString($bytes);$tmp=[System.IO.Path]::Combine($env:TEMP,('armar_pedidos_'+[guid]::NewGuid().ToString('N')+'.ps1'));[System.IO.File]::WriteAllText($tmp,$ps,[System.Text.Encoding]::UTF8);& $tmp;Remove-Item $tmp -Force -ErrorAction SilentlyContinue"
+set "PEDIDOS_BAT_PATH=%~f0"
+powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${toUtf16LeBase64(ARMAR_PEDIDOS_BOOTSTRAP_PS)}
 echo.
 pause
 exit /b
@@ -1312,7 +1345,7 @@ foreach ($p in $pedidos) {
         }
 
         if ($qty -gt 1) { $prefijo = "X$qty " } else { $prefijo = "" }
-        $nombreBase = ($prefijo + $baseNombre) -replace '[<>:"/\\|?*]', ''
+        $nombreBase = ($prefijo + $baseNombre + " (" + $fid + ")") -replace '[<>:"/\\|?*]', ''
         $nombreBase = $nombreBase.Trim()
         if (-not $nombreBase) { $nombreBase = "SIN_NOMBRE" }
         $extOrig = [System.IO.Path]::GetExtension($origen)
