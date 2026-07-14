@@ -586,6 +586,8 @@
 <div class="settings-panel" id="pedidos-panel">
   <h3>Pedidos</h3>
   <button class="btn secondary" id="refresh-pedidos-btn" style="width:100%;margin-bottom:12px;">🔄 Actualizar lista</button>
+  <button class="btn secondary" id="clear-pedidos-btn" style="width:100%;margin-bottom:8px;">🗑️ Borrar TODOS los pedidos y comprobantes</button>
+  <p class="hint" id="clear-pedidos-status"></p>
   <div id="pedidos-list"></div>
 </div>
 
@@ -1057,6 +1059,30 @@ document.getElementById('toggle-pedidos').addEventListener('click', ()=>{
   if(panel.classList.contains('open')) loadPedidosAdmin();
 });
 document.getElementById('refresh-pedidos-btn').addEventListener('click', loadPedidosAdmin);
+
+document.getElementById('clear-pedidos-btn').addEventListener('click', async ()=>{
+  const statusEl = document.getElementById('clear-pedidos-status');
+  if(!settings.appsScriptUrl){
+    statusEl.textContent = 'Falta la URL del Apps Script.';
+    return;
+  }
+  const ok = confirm('Esto borra TODOS los pedidos de la planilla y TODOS los comprobantes de Drive, para empezar de cero. No se puede deshacer. ¿Confirmás?');
+  if(!ok) return;
+  statusEl.textContent = 'Borrando...';
+  try{
+    const resp = await fetch(settings.appsScriptUrl, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      body: JSON.stringify({ type: 'clearPedidos' })
+    });
+    const json = await resp.json();
+    if(!json.ok) throw new Error(json.error || 'error');
+    statusEl.textContent = `Listo: se borraron ${json.pedidosBorrados} pedido/s y ${json.comprobantesBorrados} comprobante/s.`;
+    loadPedidosAdmin();
+  }catch(err){
+    statusEl.textContent = 'No se pudo borrar. Error: ' + (err && err.message ? err.message : err);
+  }
+});
 
 async function loadPedidosAdmin(){
   const listEl = document.getElementById('pedidos-list');
