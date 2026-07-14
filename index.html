@@ -712,6 +712,10 @@ let settings = {
   paperPrice: 1200
 };
 
+// Mientras no llegó la config real desde Apps Script, no mostramos precios
+// (para no mostrar un valor viejo/por defecto que después "salta" al real).
+let configLoaded = !settings.appsScriptUrl;
+
 let selected = {};      // id -> photo
 let formatChoice = {};  // id -> {digital: bool, paper: bool}
 let currentAlumno = '';
@@ -834,7 +838,7 @@ function syncSettingsInputs(){
 }
 
 async function loadRemoteConfig(){
-  if(!settings.appsScriptUrl) return;
+  if(!settings.appsScriptUrl){ configLoaded = true; return; }
   try{
     const resp = await fetch(settings.appsScriptUrl + '?action=getConfig');
     const cfg = await resp.json();
@@ -842,9 +846,10 @@ async function loadRemoteConfig(){
       Object.assign(settings, cfg);
       syncSettingsInputs();
       Object.keys(formatChoice).forEach(id=>{ formatChoice[id] = defaultFormatChoice(); });
-      render();
     }
   }catch(err){ /* sin conexión al Apps Script: seguimos con los valores por defecto */ }
+  configLoaded = true;
+  render();
 }
 
 async function saveConfig(){
@@ -938,6 +943,10 @@ function render(){
 function updatePriceLegend(){
   const modes = allowedFormats();
   const legend = document.getElementById('price-legend');
+  if(!configLoaded){
+    legend.innerHTML = `<div class="price-item">Cargando precios...</div>`;
+    return;
+  }
   const parts = [];
   if(modes.includes('digital')){
     parts.push(`<div class="price-item">📱 Archivo digital: <b>${docenteMode ? 'Gratis' : '$'+settings.digitalPrice}</b></div>`);
