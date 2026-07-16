@@ -497,6 +497,7 @@
 </div>
 
 <div id="app-content">
+<div class="banner warn" id="admin-evento-banner" style="display:none;"></div>
 <div class="toolbar">
   <button class="tab settings-toggle" id="toggle-settings">⚙ Configurar venta</button>
   <button class="tab settings-toggle" id="toggle-upload">📤 Subir fotos</button>
@@ -668,6 +669,12 @@ if(!adminMode){
   document.getElementById('toggle-pedidos').style.display = 'none';
 }
 
+if(adminMode && eventoId){
+  const bannerEl = document.getElementById('admin-evento-banner');
+  bannerEl.style.display = 'block';
+  bannerEl.innerHTML = '⚙ Estás administrando el acto: <b>' + eventoId + '</b> — las fotos que subas acá van a la carpeta de este acto. Para administrar otro, cambiá el <code>?evento=</code> del link.';
+}
+
 function eventoUrl(id){
   const url = new URL(location.href);
   url.searchParams.set('evento', id);
@@ -801,6 +808,14 @@ let settings = {
   digitalPrice: 800,
   paperPrice: 1200
 };
+
+// Si el acto (evento) todavía no tiene su propio nombre configurado, no
+// mostramos el nombre de OTRO acto (como "ACTO INDEPENDENCIA 2026") como si
+// fuera el de este. Mostramos el ID del acto hasta que se guarde un nombre.
+if(eventoId && eventoId !== 'independencia2026'){
+  settings.eventName = eventoId;
+  settings.eventDate = '';
+}
 
 // Guardamos la URL del Apps Script en el navegador para que la pantalla de
 // selección de acto (que todavía no tiene un evento elegido) sepa a dónde
