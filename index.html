@@ -482,12 +482,12 @@
   </div>
   <p class="kicker">PLATAFORMA DE FOTOGRAFÍA DE ACTOS</p>
   <h1 id="school-title">COLEGIO CIMDIP</h1>
-  <p class="subtitle" id="event-subtitle">Las fotos de "ACTO INDEPENDENCIA 2026"</p>
+  <p class="subtitle" id="event-subtitle"></p>
   <p class="avail" id="avail-note"></p>
 </header>
 
 <div id="evento-landing" style="display:none; max-width:520px; margin:30px auto; padding:0 16px;">
-  <h2 style="text-align:center; margin-bottom:6px;">Elegí el acto</h2>
+  <h2 style="text-align:center; margin-bottom:6px; font-size:26px;">SELECCIONÁ EL EVENTO PARA ELEGIR FOTOS</h2>
   <p class="hint" style="text-align:center; margin-bottom:20px;">Tocá el acto del que querés ver y comprar las fotos.</p>
   <div id="evento-landing-list"></div>
   <div id="evento-landing-admin" style="display:none; margin-top:24px; text-align:center;">
@@ -683,6 +683,10 @@ function eventoUrl(id){
 
 async function mostrarLandingEventos(){
   document.getElementById('app-content').style.display = 'none';
+  // Esta pantalla no es de ningún acto puntual: no mostramos nombre ni
+  // fecha de vigencia de otro acto acá.
+  document.getElementById('event-subtitle').textContent = '';
+  document.getElementById('avail-note').textContent = '';
   const landing = document.getElementById('evento-landing');
   landing.style.display = 'block';
   const listEl = document.getElementById('evento-landing-list');
