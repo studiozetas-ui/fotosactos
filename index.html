@@ -486,6 +486,17 @@
   <p class="avail" id="avail-note"></p>
 </header>
 
+<div id="evento-landing" style="display:none; max-width:520px; margin:30px auto; padding:0 16px;">
+  <h2 style="text-align:center; margin-bottom:6px;">Elegí el acto</h2>
+  <p class="hint" style="text-align:center; margin-bottom:20px;">Tocá el acto del que querés ver y comprar las fotos.</p>
+  <div id="evento-landing-list"></div>
+  <div id="evento-landing-admin" style="display:none; margin-top:24px; text-align:center;">
+    <button class="btn secondary" id="evento-crear-btn">➕ Crear acto nuevo</button>
+    <button class="btn secondary" id="evento-qr-btn" style="margin-top:8px;">📱 QR de este link (elegir acto)</button>
+  </div>
+</div>
+
+<div id="app-content">
 <div class="toolbar">
   <button class="tab settings-toggle" id="toggle-settings">⚙ Configurar venta</button>
   <button class="tab settings-toggle" id="toggle-upload">📤 Subir fotos</button>
@@ -578,7 +589,10 @@
   <p class="hint" id="clear-drive-status"></p>
   <hr>
   <h3>Pedidos en papel</h3>
-  <p class="hint">Marcá "Verificado" en la columna Estado de la planilla a los pedidos que ya confirmaste, y después apretá este botón: descarga un único .bat con esos pedidos ya adentro. Poné ese .bat directo en la misma carpeta donde tenés tus fotos originales (con el mismo nombre de archivo que subiste a la app) y ejecutalo ahí: crea una carpeta "Pedidos" con las copias listas para imprimir.</p>
+  <p class="hint">Marcá "Verificado" en el panel de Pedidos a los que ya confirmaste, y después apretá este botón: descarga un único .bat con esos pedidos ya adentro. Cada vez que lo generás, solo trae los pedidos NUEVOS desde la última vez (los que ya se incluyeron en un .bat anterior no se repiten). Poné ese .bat directo en la misma carpeta donde tenés tus fotos originales y ejecutalo ahí: crea/agrega a una carpeta "Pedidos" con las copias listas para imprimir.</p>
+  <label class="hint" style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+    <input type="checkbox" id="incluir-ya-generados"> Incluir también los pedidos ya generados antes
+  </label>
   <button class="btn secondary" id="generar-pedidos-btn" style="width:100%;">🖨️ Generar pedidos de papel (.bat)</button>
   <p class="hint" id="generar-pedidos-status"></p>
 </div>
@@ -639,17 +653,93 @@
   <button class="lightbox-close" id="lightbox-close">✕</button>
   <img id="lightbox-img" src="" alt="">
 </div>
+</div><!-- /app-content -->
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 const urlParams = new URLSearchParams(location.search);
 const docenteMode = urlParams.get('acceso') === 'docente';
 const adminMode = urlParams.get('admin') === '1';
+const eventoId = urlParams.get('evento') || '';
 
 if(!adminMode){
   document.getElementById('toggle-settings').style.display = 'none';
   document.getElementById('toggle-upload').style.display = 'none';
   document.getElementById('toggle-pedidos').style.display = 'none';
+}
+
+function eventoUrl(id){
+  const url = new URL(location.href);
+  url.searchParams.set('evento', id);
+  return url.toString();
+}
+
+async function mostrarLandingEventos(){
+  document.getElementById('app-content').style.display = 'none';
+  const landing = document.getElementById('evento-landing');
+  landing.style.display = 'block';
+  const listEl = document.getElementById('evento-landing-list');
+  listEl.innerHTML = 'Cargando actos...';
+
+  // Necesitamos ALGUNA url de Apps Script para poder listar los actos. Como
+  // todavía no hay evento elegido, la sacamos de lo último guardado en este
+  // navegador (si alguna vez se configuró), o queda vacía.
+  const baseUrl = localStorage.getItem('appsScriptUrlGlobal') || '';
+  if(!baseUrl){
+    listEl.innerHTML = '<p class="hint">Todavía no hay ningún acto configurado. Si sos el administrador, abrí el link con <code>?evento=NOMBRE&admin=1</code> para crear el primero.</p>';
+  } else {
+    try{
+      const resp = await fetch(baseUrl + '?action=listEventos');
+      const eventos = await resp.json();
+      if(!Array.isArray(eventos) || eventos.length === 0){
+        listEl.innerHTML = '<p class="hint">Todavía no hay actos disponibles.</p>';
+      } else {
+        listEl.innerHTML = '';
+        eventos.forEach(ev=>{
+          const btn = document.createElement('a');
+          btn.className = 'btn';
+          btn.style.display = 'block';
+          btn.style.width = '100%';
+          btn.style.marginBottom = '10px';
+          btn.style.textAlign = 'center';
+          btn.href = eventoUrl(ev.id);
+          btn.textContent = ev.nombre || ev.id;
+          listEl.appendChild(btn);
+        });
+      }
+    }catch(err){
+      listEl.innerHTML = '<p class="hint">No se pudo cargar la lista de actos.</p>';
+    }
+  }
+
+  if(adminMode){
+    document.getElementById('evento-landing-admin').style.display = 'block';
+    document.getElementById('evento-crear-btn').addEventListener('click', ()=>{
+      const nombre = prompt('Nombre corto para el acto nuevo (sin espacios ni acentos, ej: bandera2026):');
+      if(!nombre) return;
+      const slug = nombre.trim().toLowerCase().replace(/[^a-z0-9]+/g,'');
+      if(!slug) return;
+      location.href = eventoUrl(slug) + '&admin=1';
+    });
+    document.getElementById('evento-qr-btn').addEventListener('click', ()=>{
+      const url = new URL(location.href);
+      url.searchParams.delete('admin');
+      url.searchParams.delete('acceso');
+      url.searchParams.delete('evento');
+      const link = url.toString();
+      const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(link);
+      const win = window.open('', '_blank');
+      if(win){
+        win.document.write(
+          '<title>QR - Elegir acto</title>' +
+          '<body style="text-align:center;font-family:sans-serif;padding:30px;">' +
+          '<p style="word-break:break-all;">' + link + '</p>' +
+          '<img src="' + qrUrl + '" alt="QR"><p>Este QR lleva a la pantalla para elegir el acto. Click derecho → Guardar imagen, o imprimir esta página.</p>' +
+          '</body>'
+        );
+      }
+    });
+  }
 }
 
 function buildSet(count){
@@ -687,7 +777,7 @@ async function loadRemotePhotos(){
     return;
   }
   try{
-    const resp = await fetch(settings.appsScriptUrl + '?action=listFotos');
+    const resp = await fetch(settings.appsScriptUrl + '?action=listFotos&evento=' + encodeURIComponent(eventoId));
     const list = await resp.json();
     PHOTOS = Array.isArray(list) ? list : [];
     photosAreDemo = false;
@@ -711,6 +801,11 @@ let settings = {
   digitalPrice: 800,
   paperPrice: 1200
 };
+
+// Guardamos la URL del Apps Script en el navegador para que la pantalla de
+// selección de acto (que todavía no tiene un evento elegido) sepa a dónde
+// pedir la lista de actos disponibles.
+if(settings.appsScriptUrl) localStorage.setItem('appsScriptUrlGlobal', settings.appsScriptUrl);
 
 // Mientras no llegó la config real desde Apps Script, no mostramos precios
 // (para no mostrar un valor viejo/por defecto que después "salta" al real).
@@ -776,14 +871,33 @@ document.getElementById('copy-docente-link').addEventListener('click', ()=>{
     setTimeout(()=> b.textContent = 'Copiar', 1500);
   });
 });
-document.getElementById('share-link').addEventListener('click', ()=>{
+function linkParaCompartir(){
   const url = new URL(location.href);
-  url.search = '';
-  navigator.clipboard.writeText(url.toString()).then(()=>{
+  url.searchParams.delete('admin');
+  url.searchParams.delete('acceso');
+  return url.toString();
+}
+
+document.getElementById('share-link').addEventListener('click', ()=>{
+  const link = linkParaCompartir();
+  navigator.clipboard.writeText(link).then(()=>{
     const b = document.getElementById('share-link');
     b.textContent = 'Copiado ✓';
     setTimeout(()=> b.textContent = '🔗 Compartir', 1500);
   });
+  if(adminMode){
+    const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(link);
+    const win = window.open('', '_blank');
+    if(win){
+      win.document.write(
+        '<title>QR - ' + (eventoId || 'acto') + '</title>' +
+        '<body style="text-align:center;font-family:sans-serif;padding:30px;">' +
+        '<p style="word-break:break-all;">' + link + '</p>' +
+        '<img src="' + qrUrl + '" alt="QR"><p>Click derecho → Guardar imagen, o imprimir esta página.</p>' +
+        '</body>'
+      );
+    }
+  }
 });
 
 function allowedFormats(){
@@ -840,7 +954,7 @@ function syncSettingsInputs(){
 async function loadRemoteConfig(){
   if(!settings.appsScriptUrl){ configLoaded = true; return; }
   try{
-    const resp = await fetch(settings.appsScriptUrl + '?action=getConfig');
+    const resp = await fetch(settings.appsScriptUrl + '?action=getConfig&evento=' + encodeURIComponent(eventoId));
     const cfg = await resp.json();
     if(cfg && Object.keys(cfg).length){
       Object.assign(settings, cfg);
@@ -876,7 +990,7 @@ async function saveConfig(){
     const resp = await fetch(settings.appsScriptUrl, {
       method: 'POST',
       headers: {'Content-Type': 'text/plain;charset=utf-8'},
-      body: JSON.stringify({ type: 'config', config: configToSave })
+      body: JSON.stringify({ type: 'config', evento: eventoId, config: configToSave })
     });
     const json = await resp.json();
     if(!json.ok) throw new Error(json.error || 'error');
@@ -1082,7 +1196,7 @@ document.getElementById('clear-pedidos-btn').addEventListener('click', async ()=
     const resp = await fetch(settings.appsScriptUrl, {
       method: 'POST',
       headers: {'Content-Type': 'text/plain;charset=utf-8'},
-      body: JSON.stringify({ type: 'clearPedidos' })
+      body: JSON.stringify({ type: 'clearPedidos', evento: eventoId })
     });
     const json = await resp.json();
     if(!json.ok) throw new Error(json.error || 'error');
@@ -1101,7 +1215,7 @@ async function loadPedidosAdmin(){
   }
   listEl.innerHTML = '<p class="hint">Cargando...</p>';
   try{
-    const resp = await fetch(settings.appsScriptUrl + '?action=listPedidos');
+    const resp = await fetch(settings.appsScriptUrl + '?action=listPedidos&evento=' + encodeURIComponent(eventoId));
     const rows = await resp.json();
     const pedidos = (Array.isArray(rows) ? rows : []).slice().reverse();
     if(pedidos.length === 0){
@@ -1116,7 +1230,7 @@ async function loadPedidosAdmin(){
           <div class="pedido-info">
             <b>${p.alumno || 'Sin nombre'}</b>${p.grado ? ' — ' + p.grado : ''}
             <span class="hint">${p.fotos || ''}</span>
-            <span class="hint">Total: $${p.total || 0} — Estado: ${p.estado || 'Pendiente'}</span>
+            <span class="hint">Total: $${p.total || 0} — Estado: ${p.estado || 'Pendiente'}${p.impreso ? ' — 🖨️ Ya generado' : ''}</span>
           </div>
           <div class="pedido-actions">
             ${p.comprobante ? `<a href="${p.comprobante}" target="_blank" class="btn secondary">Ver comprobante</a>` : ''}
@@ -1136,7 +1250,7 @@ async function loadPedidosAdmin(){
           const resp2 = await fetch(settings.appsScriptUrl, {
             method: 'POST',
             headers: {'Content-Type': 'text/plain;charset=utf-8'},
-            body: JSON.stringify({ type: 'marcarVerificado', pedidoId })
+            body: JSON.stringify({ type: 'marcarVerificado', pedidoId, evento: eventoId })
           });
           const json2 = await resp2.json();
           if(!json2.ok) throw new Error(json2.error || 'error');
@@ -1167,7 +1281,10 @@ updateEventDatePreview();
 document.getElementById('set-retention').addEventListener('input', e=>{ settings.retentionDays = Number(e.target.value)||0; render(); });
 document.getElementById('set-alias').addEventListener('input', e=>{ settings.alias = e.target.value; });
 document.getElementById('set-whatsapp').addEventListener('input', e=>{ settings.whatsapp = e.target.value; });
-document.getElementById('set-appsscript').addEventListener('input', e=>{ settings.appsScriptUrl = e.target.value.trim(); });
+document.getElementById('set-appsscript').addEventListener('input', e=>{
+  settings.appsScriptUrl = e.target.value.trim();
+  if(settings.appsScriptUrl) localStorage.setItem('appsScriptUrlGlobal', settings.appsScriptUrl);
+});
 document.getElementById('set-modality').addEventListener('change', e=>{
   settings.modality = e.target.value;
   Object.keys(formatChoice).forEach(id=>{ formatChoice[id] = defaultFormatChoice(); });
@@ -1217,6 +1334,7 @@ document.getElementById('file-input').addEventListener('change', async e=>{
           headers: {'Content-Type': 'text/plain;charset=utf-8'},
           body: JSON.stringify({
             type: 'foto',
+            evento: eventoId,
             fotoId: id,
             fotoBase64: dataUrl.split(',')[1],
             fotoMimeType: file.type
@@ -1266,7 +1384,7 @@ document.getElementById('clear-drive-photos').addEventListener('click', async ()
     const resp = await fetch(settings.appsScriptUrl, {
       method: 'POST',
       headers: {'Content-Type': 'text/plain;charset=utf-8'},
-      body: JSON.stringify({ type: 'clearFotos' })
+      body: JSON.stringify({ type: 'clearFotos', evento: eventoId })
     });
     const json = await resp.json();
     if(!json.ok) throw new Error(json.error || 'error');
@@ -1431,20 +1549,24 @@ document.getElementById('generar-pedidos-btn').addEventListener('click', async (
   }
   statusEl.textContent = 'Buscando pedidos verificados...';
   try{
-    const resp = await fetch(settings.appsScriptUrl + '?action=listPedidos');
+    const incluirYaGenerados = document.getElementById('incluir-ya-generados').checked;
+    const resp = await fetch(settings.appsScriptUrl + '?action=listPedidos&evento=' + encodeURIComponent(eventoId));
     const rows = await resp.json();
     const ESTADOS_LISTOS = ['verificado', 'ok', 'confirmado', 'pagado'];
     const pedidos = [];
+    const pedidoIdsIncluidos = [];
     (Array.isArray(rows) ? rows : []).forEach(row=>{
       const estado = (row.estado || '').toString().trim().toLowerCase();
       if(!ESTADOS_LISTOS.includes(estado)) return;
+      if(!incluirYaGenerados && row.impreso) return;
       const fotosPapel = parseFotosPapelJS(row.fotos);
       if(fotosPapel.length === 0) return;
       pedidos.push({ alumno: row.alumno || 'SIN_NOMBRE', grado: row.grado || '', fotos: fotosPapel });
+      if(row.pedidoId) pedidoIdsIncluidos.push(row.pedidoId);
     });
 
     if(pedidos.length === 0){
-      statusEl.textContent = 'No hay pedidos verificados con fotos en papel todavía.';
+      statusEl.textContent = 'No hay pedidos nuevos con fotos en papel. Si querés volver a generar los de antes, tildá "Incluir también los pedidos ya generados antes".';
       return;
     }
 
@@ -1455,6 +1577,16 @@ document.getElementById('generar-pedidos-btn').addEventListener('click', async (
     const batContent = ARMAR_PEDIDOS_BAT_HEADER + psB64 + '\n';
     downloadTextFile('armar_pedidos_papel.bat', batContent);
     statusEl.textContent = `Listo: ${pedidos.length} pedido/s con fotos en papel. Descargado.`;
+
+    if(pedidoIdsIncluidos.length > 0){
+      try{
+        await fetch(settings.appsScriptUrl, {
+          method: 'POST',
+          headers: {'Content-Type': 'text/plain;charset=utf-8'},
+          body: JSON.stringify({ type: 'marcarImpreso', pedidoIds: pedidoIdsIncluidos })
+        });
+      }catch(err2){ /* si falla el marcado, no rompemos el flujo: el .bat ya se descargó */ }
+    }
   }catch(err){
     statusEl.textContent = 'No se pudo generar. Error: ' + (err && err.message ? err.message : err);
   }
@@ -1687,6 +1819,7 @@ async function confirmPayment(){
         headers: {'Content-Type': 'text/plain;charset=utf-8'},
         body: JSON.stringify({
           type: 'comprobante',
+          evento: eventoId,
           pedidoId,
           alumno: currentAlumno,
           grado: currentGrado,
@@ -1747,6 +1880,7 @@ async function startFreeFlow(){
         headers: {'Content-Type': 'text/plain;charset=utf-8'},
         body: JSON.stringify({
           type: 'comprobante',
+          evento: eventoId,
           pedidoId,
           alumno: currentAlumno,
           grado: currentGrado,
@@ -1951,10 +2085,14 @@ async function downloadAllZip(items, triggerBtn){
   triggerBtn.textContent = 'Descargar todas (ZIP)';
 }
 
-render();
-updateCartBar();
-loadRemoteConfig();
-loadRemotePhotos();
+if(!eventoId){
+  mostrarLandingEventos();
+} else {
+  render();
+  updateCartBar();
+  loadRemoteConfig();
+  loadRemotePhotos();
+}
 </script>
 </body>
 </html>
