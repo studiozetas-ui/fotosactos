@@ -870,7 +870,7 @@ let logoWatermarkImg = null;
 function loadLogoWatermarkImage(url){
   if(!url) return;
   const img = new Image();
-  img.onload = ()=>{ logoWatermarkImg = img; if(typeof render === 'function') render(); };
+  img.onload = ()=>{ logoWatermarkImg = img; if(eventoId && typeof render === 'function') render(); };
   img.onerror = ()=>{ /* si el logo no cargó, la marca de agua usa el texto de respaldo */ };
   img.src = url;
 }
