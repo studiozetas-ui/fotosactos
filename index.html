@@ -1879,7 +1879,7 @@ exit /b
 const ARMAR_PEDIDOS_PS_TEMPLATE = String.raw`$ErrorActionPreference = 'Stop'
 try {
 $json = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('__PEDIDOS_B64__'))
-$pedidos = @($json | ConvertFrom-Json)
+$tareas = @($json | ConvertFrom-Json)
 $fotosDir = Get-Location
 $outDir = Join-Path $fotosDir 'Pedidos'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
@@ -1887,41 +1887,31 @@ $exts = @('.jpg','.jpeg','.png','.JPG','.JPEG','.PNG')
 $procesados = 0
 $faltantes = New-Object System.Collections.Generic.List[string]
 
-foreach ($p in $pedidos) {
-    $alumno = $p.alumno
-    $grado = $p.grado
-    if ($grado) { $baseNombre = "$alumno - $grado" } else { $baseNombre = "$alumno" }
+foreach ($t in $tareas) {
+    $fid = [string]$t.fotoId
+    $nombreBase = [string]$t.nombreBase
+    if (-not $nombreBase) { $nombreBase = "SIN_NOMBRE" }
 
-    foreach ($f in @($p.fotos)) {
-        $fid = $f.id
-        $qty = [int]$f.qty
-        if ($qty -lt 1) { $qty = 1 }
-
-        $origen = $null
-        foreach ($ext in $exts) {
-            $cand = Join-Path $fotosDir ($fid + $ext)
-            if (Test-Path $cand) { $origen = $cand; break }
-        }
-        if (-not $origen) {
-            $faltantes.Add("$fid (pedido de $alumno)")
-            continue
-        }
-
-        if ($qty -gt 1) { $prefijo = "X$qty " } else { $prefijo = "" }
-        $nombreBase = ($prefijo + $baseNombre + " (" + $fid + ")") -replace '[<>:"/\\|?*]', ''
-        $nombreBase = $nombreBase.Trim()
-        if (-not $nombreBase) { $nombreBase = "SIN_NOMBRE" }
-        $extOrig = [System.IO.Path]::GetExtension($origen)
-        $destino = Join-Path $outDir ($nombreBase + $extOrig)
-        $n = 2
-        while (Test-Path $destino) {
-            $destino = Join-Path $outDir ("$nombreBase ($n)" + $extOrig)
-            $n++
-        }
-        Copy-Item $origen $destino
-        $procesados++
-        Write-Host ("  OK: " + (Split-Path $destino -Leaf))
+    $origen = $null
+    foreach ($ext in $exts) {
+        $cand = Join-Path $fotosDir ($fid + $ext)
+        if (Test-Path $cand) { $origen = $cand; break }
     }
+    if (-not $origen) {
+        $faltantes.Add("$fid ($nombreBase)")
+        continue
+    }
+
+    $extOrig = [System.IO.Path]::GetExtension($origen)
+    $destino = Join-Path $outDir ($nombreBase + $extOrig)
+    $n = 2
+    while (Test-Path $destino) {
+        $destino = Join-Path $outDir ("$nombreBase ($n)" + $extOrig)
+        $n++
+    }
+    Copy-Item $origen $destino
+    $procesados++
+    Write-Host ("  OK: " + (Split-Path $destino -Leaf))
 }
 
 Write-Host ""
@@ -1951,6 +1941,12 @@ function downloadTextFile(filename, content){
   link.remove();
 }
 
+// Saca del nombre final cualquier caracter inválido para nombres de archivo
+// en Windows, y recorta espacios sobrantes.
+function sanitizeNombreArchivo(s){
+  return (s || '').replace(/[<>:"/\\|?*]/g, '').trim();
+}
+
 document.getElementById('generar-pedidos-btn').addEventListener('click', async ()=>{
   const statusEl = document.getElementById('generar-pedidos-status');
   if(!settings.appsScriptUrl){
@@ -1963,7 +1959,11 @@ document.getElementById('generar-pedidos-btn').addEventListener('click', async (
     const resp = await fetch(settings.appsScriptUrl + '?action=listPedidos&evento=' + encodeURIComponent(eventoId));
     const rows = await resp.json();
     const ESTADOS_LISTOS = ['verificado', 'ok', 'confirmado', 'pagado'];
-    const pedidos = [];
+    // Armamos una lista PLANA: una entrada por cada foto a copiar, con el
+    // nombre final YA RESUELTO acá en JS (alumno, grado y foto de ESE
+    // pedido puntual). Así PowerShell no tiene que combinar datos de
+    // distintos pedidos: solo copia el archivo con el nombre que le pasamos.
+    const tareas = [];
     const pedidoIdsIncluidos = [];
     (Array.isArray(rows) ? rows : []).forEach(row=>{
       const estado = (row.estado || '').toString().trim().toLowerCase();
@@ -1971,22 +1971,30 @@ document.getElementById('generar-pedidos-btn').addEventListener('click', async (
       if(!incluirYaGenerados && row.impreso) return;
       const fotosPapel = parseFotosPapelJS(row.fotos);
       if(fotosPapel.length === 0) return;
-      pedidos.push({ alumno: row.alumno || 'SIN_NOMBRE', grado: row.grado || '', fotos: fotosPapel });
+      const alumno = row.alumno || 'SIN_NOMBRE';
+      const grado = row.grado || '';
+      const baseNombre = grado ? (alumno + ' - ' + grado) : alumno;
+      fotosPapel.forEach(f=>{
+        const prefijo = f.qty > 1 ? ('X' + f.qty + ' ') : '';
+        let nombreBase = sanitizeNombreArchivo(prefijo + baseNombre + ' (' + f.id + ')');
+        if(!nombreBase) nombreBase = 'SIN_NOMBRE';
+        tareas.push({ fotoId: f.id, nombreBase });
+      });
       if(row.pedidoId) pedidoIdsIncluidos.push(row.pedidoId);
     });
 
-    if(pedidos.length === 0){
+    if(tareas.length === 0){
       statusEl.textContent = 'No hay pedidos nuevos con fotos en papel. Si querés volver a generar los de antes, tildá "Incluir también los pedidos ya generados antes".';
       return;
     }
 
-    const json = JSON.stringify(pedidos);
+    const json = JSON.stringify(tareas);
     const b64 = toUtf8Base64(json);
     const psScript = ARMAR_PEDIDOS_PS_TEMPLATE.replace('__PEDIDOS_B64__', b64);
     const psB64 = toUtf8Base64(psScript);
     const batContent = ARMAR_PEDIDOS_BAT_HEADER + psB64 + '\n';
     downloadTextFile('armar_pedidos_papel.bat', batContent);
-    statusEl.textContent = `Listo: ${pedidos.length} pedido/s con fotos en papel. Descargado.`;
+    statusEl.textContent = `Listo: ${tareas.length} foto/s de ${pedidoIdsIncluidos.length} pedido/s. Descargado.`;
 
     if(pedidoIdsIncluidos.length > 0){
       try{
