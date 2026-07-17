@@ -458,6 +458,8 @@
     -webkit-touch-callout:none;
     -webkit-user-select:none;
     user-select:none;
+    transform-origin:center center;
+    touch-action:none;
   }
   .lightbox-close{
     position:absolute;
@@ -1020,6 +1022,14 @@ function isEventActive(){
 
 function updateHeader(){
   document.getElementById('school-title').textContent = settings.schoolName || 'COLEGIO';
+  if(!configLoaded){
+    // Todavía no llegó la config real de este acto: no mostramos nombre ni
+    // fecha viejos/de ejemplo mientras esperamos la respuesta.
+    document.getElementById('event-subtitle').textContent = 'Cargando datos del acto...';
+    document.getElementById('avail-note').textContent = '';
+    document.getElementById('retention-notice').textContent = '';
+    return;
+  }
   document.getElementById('event-subtitle').textContent = 'Las fotos de "' + (settings.eventName || 'EVENTO') + '"';
   const exp = computeExpiration();
   document.getElementById('avail-note').textContent = 'Disponibles hasta el ' + formatDate(exp);
@@ -1258,6 +1268,8 @@ function showLightboxAt(idx){
   const photo = PHOTOS[lightboxIndex];
   const imgEl = document.getElementById('lightbox-img');
   imgEl.src = '';
+  lbScale = 1; lbPanX = 0; lbPanY = 0;
+  imgEl.style.transform = '';
   loadWatermarked(photo.url, photo.id, 1400, dataUrl=>{
     if(lightboxIndex === PHOTOS.indexOf(photo)) imgEl.src = dataUrl;
   });
@@ -1289,24 +1301,100 @@ document.getElementById('lightbox-select-btn').addEventListener('click', (e)=>{
 });
 document.getElementById('lightbox-close').addEventListener('click', ()=>{
   document.getElementById('lightbox').classList.remove('open');
+  resetLightboxZoom();
 });
 document.getElementById('lightbox').addEventListener('click', (e)=>{
-  if(e.target.id === 'lightbox') document.getElementById('lightbox').classList.remove('open');
+  if(e.target.id === 'lightbox'){
+    document.getElementById('lightbox').classList.remove('open');
+    resetLightboxZoom();
+  }
 });
 
-// Deslizar con el dedo para pasar de foto (celular).
+// Deslizar con el dedo para pasar de foto, pellizcar (pinch) para ampliar
+// más, y arrastrar para moverse dentro de la foto ya ampliada. Doble tap
+// también achica/agranda.
+let lbScale = 1, lbPanX = 0, lbPanY = 0;
+
+function applyLightboxTransform(){
+  const imgEl = document.getElementById('lightbox-img');
+  imgEl.style.transform = `translate(${lbPanX}px, ${lbPanY}px) scale(${lbScale})`;
+}
+
+function resetLightboxZoom(){
+  lbScale = 1; lbPanX = 0; lbPanY = 0;
+  const imgEl = document.getElementById('lightbox-img');
+  imgEl.style.transition = 'transform .15s ease';
+  applyLightboxTransform();
+  setTimeout(()=>{ imgEl.style.transition = ''; }, 160);
+}
+
 (function(){
   const wrap = document.getElementById('lightbox-img-wrap');
   let startX = null, startY = null;
+  let pinching = false, pinchStartDist = 0, pinchStartScale = 1;
+  let panning = false, panStartX = 0, panStartY = 0, panOrigX = 0, panOrigY = 0;
+  let lastTap = 0;
+
+  function dist(t0, t1){
+    return Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+  }
+
   wrap.addEventListener('touchstart', (e)=>{
-    startX = e.touches[0].clientX;
-    startY = e.touches[0].clientY;
+    if(e.touches.length === 2){
+      pinching = true;
+      panning = false;
+      pinchStartDist = dist(e.touches[0], e.touches[1]);
+      pinchStartScale = lbScale;
+    } else if(e.touches.length === 1){
+      if(lbScale > 1){
+        panning = true;
+        panStartX = e.touches[0].clientX;
+        panStartY = e.touches[0].clientY;
+        panOrigX = lbPanX;
+        panOrigY = lbPanY;
+      } else {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+      }
+    }
   }, {passive:true});
+
+  wrap.addEventListener('touchmove', (e)=>{
+    if(pinching && e.touches.length === 2){
+      const d = dist(e.touches[0], e.touches[1]);
+      lbScale = Math.min(4, Math.max(1, pinchStartScale * (d / pinchStartDist)));
+      applyLightboxTransform();
+    } else if(panning && e.touches.length === 1){
+      lbPanX = panOrigX + (e.touches[0].clientX - panStartX);
+      lbPanY = panOrigY + (e.touches[0].clientY - panStartY);
+      applyLightboxTransform();
+    }
+  }, {passive:true});
+
   wrap.addEventListener('touchend', (e)=>{
+    if(pinching){
+      pinching = false;
+      if(lbScale <= 1.02) resetLightboxZoom();
+      return;
+    }
+    if(panning){
+      panning = false;
+      return;
+    }
     if(startX === null) return;
+    const now = Date.now();
     const dx = e.changedTouches[0].clientX - startX;
     const dy = e.changedTouches[0].clientY - startY;
-    if(Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)){
+    if(Math.abs(dx) < 10 && Math.abs(dy) < 10){
+      // toque corto: chequeamos doble tap para ampliar/achicar
+      if(now - lastTap < 300){
+        if(lbScale > 1) resetLightboxZoom();
+        else { lbScale = 2.5; applyLightboxTransform(); }
+        lastTap = 0;
+      } else {
+        lastTap = now;
+      }
+    } else if(lbScale <= 1 && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)){
       showLightboxAt(lightboxIndex + (dx < 0 ? 1 : -1));
     }
     startX = null; startY = null;
