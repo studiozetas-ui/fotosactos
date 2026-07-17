@@ -704,14 +704,6 @@
     <button class="btn secondary" id="clear-drive-photos">🗑️ Vaciar TODAS las fotos de Drive</button>
   </div>
   <p class="hint" id="clear-drive-status"></p>
-  <hr>
-  <h3>Pedidos en papel</h3>
-  <p class="hint">Marcá "Verificado" en el panel de Pedidos a los que ya confirmaste, y después apretá este botón: descarga un único .bat con esos pedidos ya adentro. Cada vez que lo generás, solo trae los pedidos NUEVOS desde la última vez (los que ya se incluyeron en un .bat anterior no se repiten). Poné ese .bat directo en la misma carpeta donde tenés tus fotos originales y ejecutalo ahí: crea/agrega a una carpeta "Pedidos" con las copias listas para imprimir.</p>
-  <label class="hint" style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
-    <input type="checkbox" id="incluir-ya-generados"> Incluir también los pedidos ya generados antes
-  </label>
-  <button class="btn secondary" id="generar-pedidos-btn" style="width:100%;">🖨️ Generar pedidos de papel (.bat)</button>
-  <p class="hint" id="generar-pedidos-status"></p>
 </div>
 
 <div class="settings-panel" id="pedidos-panel">
@@ -720,6 +712,15 @@
   <button class="btn secondary" id="clear-pedidos-btn" style="width:100%;margin-bottom:8px;">🗑️ Borrar TODOS los pedidos y comprobantes</button>
   <p class="hint" id="clear-pedidos-status"></p>
   <div id="pedidos-estado-banner" style="display:none; margin-bottom:12px;"></div>
+  <hr>
+  <h3>Pedidos en papel</h3>
+  <p class="hint">Marcá "Verificado" a los pedidos que ya confirmaste, y después apretá este botón: descarga un único .bat con esos pedidos ya adentro. Cada vez que lo generás, solo trae los pedidos NUEVOS desde la última vez (los que ya se incluyeron en un .bat anterior no se repiten). Poné ese .bat directo en la misma carpeta donde tenés tus fotos originales y ejecutalo ahí: crea/agrega a una carpeta "Pedidos" con las copias listas para imprimir.</p>
+  <label class="hint" style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+    <input type="checkbox" id="incluir-ya-generados"> Incluir también los pedidos ya generados antes
+  </label>
+  <button class="btn secondary" id="generar-pedidos-btn" style="width:100%;">🖨️ Generar pedidos de papel (.bat)</button>
+  <p class="hint" id="generar-pedidos-status"></p>
+  <hr>
   <div id="pedidos-list"></div>
 </div>
 
