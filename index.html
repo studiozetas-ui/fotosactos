@@ -88,6 +88,42 @@
     border-radius:14px;
     background:var(--card);
   }
+
+  #landing-bg{
+    position:fixed;
+    inset:0;
+    z-index:0;
+    overflow:hidden;
+    display:none;
+  }
+  #landing-bg img{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    opacity:0;
+    filter:brightness(.32) saturate(.6);
+    animation:landingBgFade 30s infinite;
+  }
+  #landing-bg img:nth-child(1){ animation-delay:0s; }
+  #landing-bg img:nth-child(2){ animation-delay:6s; }
+  #landing-bg img:nth-child(3){ animation-delay:12s; }
+  #landing-bg img:nth-child(4){ animation-delay:18s; }
+  #landing-bg img:nth-child(5){ animation-delay:24s; }
+  #landing-bg::after{
+    content:'';
+    position:absolute; inset:0;
+    background: radial-gradient(ellipse 900px 500px at 50% -10%, rgba(47,31,99,.55), transparent), linear-gradient(180deg, rgba(21,15,46,.78) 0%, rgba(36,26,77,.68) 55%, rgba(21,15,46,.88) 100%);
+  }
+  @keyframes landingBgFade{
+    0%{ opacity:0; transform:scale(1.1) translateX(-2%); }
+    4%{ opacity:.55; }
+    16%{ opacity:.55; }
+    20%{ opacity:0; transform:scale(1.1) translateX(2%); }
+    100%{ opacity:0; }
+  }
+  header, #evento-landing{ position:relative; z-index:1; }
   .banner.warn{
     border-color:rgba(245,178,92,.4);color:var(--warn);
     background:rgba(245,178,92,.08);
@@ -537,6 +573,14 @@
 </head>
 <body>
 
+<div id="landing-bg">
+  <img src="portada1.jpg" alt="" onerror="this.remove()">
+  <img src="portada2.jpg" alt="" onerror="this.remove()">
+  <img src="portada3.jpg" alt="" onerror="this.remove()">
+  <img src="portada4.jpg" alt="" onerror="this.remove()">
+  <img src="portada5.jpg" alt="" onerror="this.remove()">
+</div>
+
 <header>
   <div id="logo-area">
     <svg id="logo-placeholder" width="60" height="60" viewBox="0 0 64 64" fill="none" stroke="#aeabf5" stroke-width="2.2">
@@ -556,7 +600,10 @@
 
 <div id="evento-landing" style="display:none; max-width:520px; margin:30px auto; padding:0 16px;">
   <h2 style="text-align:center; margin-bottom:6px; font-size:26px;">SELECCIONÁ EL EVENTO PARA ELEGIR FOTOS</h2>
-  <p class="hint" style="text-align:center; margin-bottom:20px;">Tocá el acto del que querés ver y comprar las fotos.</p>
+  <p class="hint" style="text-align:center; margin-bottom:16px;">Tocá el acto del que querés ver y comprar las fotos.</p>
+  <div style="text-align:center; margin-bottom:20px;">
+    <button class="btn secondary" id="share-platform-btn">🔗 Compartir esta plataforma</button>
+  </div>
   <div id="pedidos-resumen-banner" style="display:none; margin-bottom:20px;"></div>
   <div id="evento-landing-list"></div>
   <div id="evento-landing-admin" style="display:none; margin-top:24px; text-align:center;">
@@ -765,6 +812,7 @@ async function mostrarLandingEventos(){
   // fecha de vigencia de otro acto acá.
   document.getElementById('event-subtitle').textContent = '';
   document.getElementById('avail-note').textContent = '';
+  document.getElementById('landing-bg').style.display = 'block';
   const landing = document.getElementById('evento-landing');
   landing.style.display = 'block';
   const listEl = document.getElementById('evento-landing-list');
@@ -1022,6 +1070,30 @@ function linkParaCompartir(){
   url.searchParams.delete('admin');
   url.searchParams.delete('acceso');
   return url.toString();
+}
+
+// Link "limpio" a la portada general (sin acto ni admin elegido), para que
+// cualquiera lo comparta y cada persona entre y elija el acto que quiera.
+function linkPlataforma(){
+  const url = new URL(location.href);
+  url.searchParams.delete('admin');
+  url.searchParams.delete('acceso');
+  url.searchParams.delete('evento');
+  return url.toString();
+}
+
+const sharePlatformBtn = document.getElementById('share-platform-btn');
+if(sharePlatformBtn){
+  sharePlatformBtn.addEventListener('click', async ()=>{
+    const link = linkPlataforma();
+    if(navigator.share){
+      try{ await navigator.share({ title: 'Fotos de Actos', url: link }); return; }catch(err){ /* si cancela, seguimos con copiar */ }
+    }
+    navigator.clipboard.writeText(link).then(()=>{
+      sharePlatformBtn.textContent = 'Copiado ✓';
+      setTimeout(()=> sharePlatformBtn.textContent = '🔗 Compartir esta plataforma', 1500);
+    });
+  });
 }
 
 document.getElementById('share-link').addEventListener('click', ()=>{
