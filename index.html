@@ -1878,8 +1878,8 @@ exit /b
 
 const ARMAR_PEDIDOS_PS_TEMPLATE = String.raw`$ErrorActionPreference = 'Stop'
 try {
-$json = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('__PEDIDOS_B64__'))
-$tareas = @($json | ConvertFrom-Json)
+$texto = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('__PEDIDOS_B64__'))
+$lineas = @($texto -split "\r?\n" | Where-Object { $_.Trim() -ne '' })
 $fotosDir = Get-Location
 $outDir = Join-Path $fotosDir 'Pedidos'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
@@ -1887,9 +1887,11 @@ $exts = @('.jpg','.jpeg','.png','.JPG','.JPEG','.PNG')
 $procesados = 0
 $faltantes = New-Object System.Collections.Generic.List[string]
 
-foreach ($t in $tareas) {
-    $fid = [string]$t.fotoId
-    $nombreBase = [string]$t.nombreBase
+foreach ($linea in $lineas) {
+    $partes = $linea -split ([char]0x1F)
+    if ($partes.Count -lt 2) { continue }
+    $fid = $partes[0]
+    $nombreBase = $partes[1]
     if (-not $nombreBase) { $nombreBase = "SIN_NOMBRE" }
 
     $origen = $null
@@ -1988,8 +1990,12 @@ document.getElementById('generar-pedidos-btn').addEventListener('click', async (
       return;
     }
 
-    const json = JSON.stringify(tareas);
-    const b64 = toUtf8Base64(json);
+    // Texto plano, una tarea por línea: fotoId + separador invisible (U+001F) + nombreBase.
+    // Evitamos JSON acá a propósito: ConvertFrom-Json en PowerShell terminó
+    // combinando los datos de varias fotos en un solo objeto en vez de
+    // mantenerlos separados. Con líneas de texto simples no hay ambigüedad posible.
+    const texto = tareas.map(t => t.fotoId + '' + t.nombreBase).join('\n');
+    const b64 = toUtf8Base64(texto);
     const psScript = ARMAR_PEDIDOS_PS_TEMPLATE.replace('__PEDIDOS_B64__', b64);
     const psB64 = toUtf8Base64(psScript);
     const batContent = ARMAR_PEDIDOS_BAT_HEADER + psB64 + '\n';
