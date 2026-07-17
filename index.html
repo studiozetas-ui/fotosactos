@@ -413,6 +413,14 @@
   .pedido-actions a, .pedido-actions button{
     font-size:12.5px; padding:8px 12px; text-align:center; text-decoration:none;
   }
+  .comprobante-thumb{
+    width:70px; height:70px;
+    object-fit:cover;
+    border-radius:10px;
+    border:1px solid var(--border);
+    display:block;
+    cursor:zoom-in;
+  }
   .pedido-actions .status{ margin:0; padding:6px 10px; text-align:center; font-size:12px; }
 
   .zoom-btn{
@@ -549,6 +557,7 @@
 <div id="evento-landing" style="display:none; max-width:520px; margin:30px auto; padding:0 16px;">
   <h2 style="text-align:center; margin-bottom:6px; font-size:26px;">SELECCIONÁ EL EVENTO PARA ELEGIR FOTOS</h2>
   <p class="hint" style="text-align:center; margin-bottom:20px;">Tocá el acto del que querés ver y comprar las fotos.</p>
+  <div id="pedidos-resumen-banner" style="display:none; margin-bottom:20px;"></div>
   <div id="evento-landing-list"></div>
   <div id="evento-landing-admin" style="display:none; margin-top:24px; text-align:center;">
     <button class="btn secondary" id="evento-crear-btn">➕ Crear acto nuevo</button>
@@ -663,6 +672,7 @@
   <button class="btn secondary" id="refresh-pedidos-btn" style="width:100%;margin-bottom:12px;">🔄 Actualizar lista</button>
   <button class="btn secondary" id="clear-pedidos-btn" style="width:100%;margin-bottom:8px;">🗑️ Borrar TODOS los pedidos y comprobantes</button>
   <p class="hint" id="clear-pedidos-status"></p>
+  <div id="pedidos-estado-banner" style="display:none; margin-bottom:12px;"></div>
   <div id="pedidos-list"></div>
 </div>
 
@@ -764,13 +774,15 @@ async function mostrarLandingEventos(){
   // todavía no hay evento elegido, la sacamos de lo último guardado en este
   // navegador (si alguna vez se configuró), o queda vacía.
   const baseUrl = localStorage.getItem('appsScriptUrlGlobal') || '';
+  let eventos = [];
   if(!baseUrl){
     listEl.innerHTML = '<p class="hint">Todavía no hay ningún acto configurado. Si sos el administrador, abrí el link con <code>?evento=NOMBRE&admin=1</code> para crear el primero.</p>';
   } else {
     try{
       const resp = await fetch(baseUrl + '?action=listEventos');
-      const eventos = await resp.json();
-      if(!Array.isArray(eventos) || eventos.length === 0){
+      eventos = await resp.json();
+      if(!Array.isArray(eventos)) eventos = [];
+      if(eventos.length === 0){
         listEl.innerHTML = '<p class="hint">Todavía no hay actos disponibles.</p>';
       } else {
         listEl.innerHTML = '';
@@ -818,6 +830,49 @@ async function mostrarLandingEventos(){
         );
       }
     });
+    if(baseUrl) mostrarResumenPedidosNuevos(baseUrl, eventos);
+  }
+}
+
+// Compara, por acto, cuántos pedidos hay contra cuántos había la última vez
+// que se abrió el panel de Pedidos de ESE acto (guardado en este navegador),
+// y avisa si hay pedidos nuevos sin revisar todavía.
+async function mostrarResumenPedidosNuevos(baseUrl, eventos){
+  const banner = document.getElementById('pedidos-resumen-banner');
+  try{
+    const resp = await fetch(baseUrl + '?action=listPedidos');
+    const todos = await resp.json();
+    const porEvento = {};
+    (Array.isArray(todos) ? todos : []).forEach(p=>{
+      const ev = p.evento || '(sin acto)';
+      porEvento[ev] = (porEvento[ev] || 0) + 1;
+    });
+    const filas = [];
+    Object.keys(porEvento).forEach(ev=>{
+      const total = porEvento[ev];
+      const visto = parseInt(localStorage.getItem('pedidosVistos_' + ev) || '0', 10);
+      const nuevos = Math.max(0, total - visto);
+      if(nuevos > 0){
+        const nombreEv = (eventos.find(e => e.id === ev) || {}).nombre || ev;
+        filas.push(
+          `<div data-evento="${ev}" style="cursor:pointer; padding:4px 0;">🟡 <b>${nuevos}</b> pedido${nuevos===1?'':'s'} nuevo${nuevos===1?'':'s'} en <b>${nombreEv}</b></div>`
+        );
+      }
+    });
+    if(filas.length > 0){
+      banner.className = 'banner warn';
+      banner.style.display = 'block';
+      banner.innerHTML = '<b>📬 Tenés pedidos nuevos:</b>' + filas.join('');
+      banner.querySelectorAll('[data-evento]').forEach(el=>{
+        el.addEventListener('click', ()=>{ location.href = eventoUrl(el.dataset.evento) + '&admin=1'; });
+      });
+    } else {
+      banner.className = 'banner mint';
+      banner.style.display = 'block';
+      banner.textContent = '✅ No hay pedidos nuevos desde la última vez que revisaste.';
+    }
+  }catch(err){
+    banner.style.display = 'none';
   }
 }
 
@@ -1482,11 +1537,29 @@ async function loadPedidosAdmin(){
     const resp = await fetch(settings.appsScriptUrl + '?action=listPedidos&evento=' + encodeURIComponent(eventoId));
     const rows = await resp.json();
     const pedidos = (Array.isArray(rows) ? rows : []).slice().reverse();
+
+    // Marcamos estos pedidos como "vistos" para que el resumen de la
+    // pantalla de selección de actos no los cuente más como nuevos.
+    localStorage.setItem('pedidosVistos_' + eventoId, String(pedidos.length));
+
     if(pedidos.length === 0){
       listEl.innerHTML = '<p class="hint">Todavía no hay pedidos.</p>';
+      document.getElementById('pedidos-estado-banner').style.display = 'none';
       return;
     }
     const ESTADOS_LISTOS = ['verificado', 'ok', 'confirmado', 'pagado'];
+
+    const pendientes = pedidos.filter(p => !ESTADOS_LISTOS.includes((p.estado || '').toLowerCase())).length;
+    const estadoBanner = document.getElementById('pedidos-estado-banner');
+    estadoBanner.style.display = 'block';
+    if(pendientes > 0){
+      estadoBanner.className = 'banner warn';
+      estadoBanner.textContent = `🟡 ${pendientes} pedido${pendientes===1?'':'s'} sin verificar todavía.`;
+    } else {
+      estadoBanner.className = 'banner mint';
+      estadoBanner.textContent = '✅ Todos los pedidos de este acto están verificados.';
+    }
+
     listEl.innerHTML = pedidos.map(p=>{
       const verificado = ESTADOS_LISTOS.includes((p.estado || '').toLowerCase());
       return `
@@ -1497,7 +1570,7 @@ async function loadPedidosAdmin(){
             <span class="hint">Total: $${p.total || 0} — Estado: ${p.estado || 'Pendiente'}${p.impreso ? ' — 🖨️ Ya generado' : ''}</span>
           </div>
           <div class="pedido-actions">
-            ${p.comprobante ? `<a href="${p.comprobante}" target="_blank" class="btn secondary">Ver comprobante</a>` : ''}
+            ${p.comprobante ? `<a href="${p.comprobante}" target="_blank" title="Ver comprobante más grande"><img src="${p.comprobante}" class="comprobante-thumb" alt="Comprobante" loading="lazy"></a>` : ''}
             ${verificado
               ? `<span class="status ok" style="display:block;">Verificado ✓</span>`
               : `<button class="btn verificar-btn" data-id="${p.pedidoId}">✅ Marcar verificado</button>`}
