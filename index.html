@@ -2339,11 +2339,15 @@ function renderDownloadsSection(digitalItems, paperItems){
   dlSection.innerHTML = '';
 
   if(paperItems.length > 0){
+    // El total a retirar tiene que sumar las COPIAS de cada foto, no solo
+    // contar fotos distintas (si pediste 10 copias de una sola foto, son
+    // 10 copias, no 1).
+    const totalCopias = paperItems.reduce((s,p)=> s + ((formatChoice[p.id] && formatChoice[p.id].paperQty) || 1), 0);
     const code = 'AR-' + Math.floor(1000 + Math.random()*8999);
     const p = document.createElement('div');
     p.className = 'status pending';
     p.style.display = 'block';
-    p.innerHTML = `Reserva de papel (${paperItems.length} foto/s) confirmada. Código <b>${code}</b>. Listas para retirar en la escuela dentro de 15 días.`;
+    p.innerHTML = `Reserva de papel: ${paperItems.length} foto/s, ${totalCopias} copia/s en total. Confirmada. Código <b>${code}</b>. Listas para retirar en la escuela dentro de 15 días.`;
     dlSection.appendChild(p);
   }
 
@@ -2380,7 +2384,7 @@ function saveOrderToLocalStorage(pedidoId, digitalItems, paperItems){
     grado: currentGrado,
     date: new Date().toISOString(),
     digital: digitalItems.map(p=>({id:p.id, url:p.url})),
-    paper: paperItems.map(p=>p.id)
+    paper: paperItems.map(p=>({id:p.id, qty: (formatChoice[p.id] && formatChoice[p.id].paperQty) || 1}))
   };
   const list = JSON.parse(localStorage.getItem('misCompras') || '[]');
   list.push(record);
@@ -2408,7 +2412,7 @@ function openMyOrders(){
       return `
         <div class="cart-item">
           <div class="row1"><div class="info"><b>${order.alumno || 'Sin nombre'}</b>${order.grado ? ' — '+order.grado : ''} — pedido ${order.pedidoId}</div></div>
-          ${order.paper.length ? `<div class="fmt-static">Papel reservado: ${order.paper.join(', ')} (retirar en la escuela)</div>` : ''}
+          ${order.paper.length ? `<div class="fmt-static">Papel reservado: ${order.paper.map(p=> typeof p === 'string' ? p : (p.id + (p.qty > 1 ? ' x' + p.qty : ''))).join(', ')} (retirar en la escuela)</div>` : ''}
           ${order.digital.length ? `<div class="fmt-static">Digital: ${order.digital.map(p=>p.id).join(', ')}</div>` : ''}
           ${order.digital.length ? `<div class="dl-list" id="${dlLinksId}"></div>` : ''}
         </div>
