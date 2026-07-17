@@ -185,12 +185,14 @@
     position:absolute;
     top:8px;
     right:8px;
-    width:24px;height:24px;
+    width:36px;height:36px;
     border-radius:50%;
     border:2px solid var(--lavender);
-    background:rgba(21,15,46,.7);
+    background:rgba(21,15,46,.85);
     display:flex;align-items:center;justify-content:center;
-    font-size:13px;color:var(--muted);
+    font-size:17px;color:var(--muted);
+    cursor:pointer;
+    z-index:3;
   }
   .frame.selected .badge{
     background:linear-gradient(135deg, var(--violet), var(--violet-dark));
@@ -417,15 +419,16 @@
     position:absolute;
     top:8px;
     left:8px;
-    width:28px;height:28px;
+    width:40px;height:40px;
     border-radius:50%;
-    background:rgba(21,15,46,.8);
+    background:rgba(21,15,46,.85);
     border:1px solid var(--border);
     color:#fff;
-    font-size:13px;
+    font-size:19px;
     display:flex;align-items:center;justify-content:center;
     cursor:pointer;
     z-index:2;
+    pointer-events:none;
   }
 
   .lightbox{
@@ -435,12 +438,26 @@
     align-items:center;justify-content:center;
     z-index:70;
     padding:24px;
+    flex-direction:column;
+    touch-action:pan-y;
   }
   .lightbox.open{ display:flex; }
+  .lightbox-img-wrap{
+    position:relative;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:100%;
+    flex:1;
+    min-height:0;
+  }
   .lightbox img{
-    max-width:100%;max-height:88vh;
+    max-width:100%;max-height:78vh;
     border-radius:14px;
     box-shadow:0 10px 40px rgba(0,0,0,.5);
+    -webkit-touch-callout:none;
+    -webkit-user-select:none;
+    user-select:none;
   }
   .lightbox-close{
     position:absolute;
@@ -452,6 +469,47 @@
     border-radius:50%;
     font-size:19px;
     cursor:pointer;
+    z-index:5;
+  }
+  .lightbox-nav{
+    position:absolute;
+    top:50%;
+    transform:translateY(-50%);
+    width:48px;height:48px;
+    border-radius:50%;
+    background:rgba(255,255,255,.12);
+    border:1px solid var(--border);
+    color:#fff;
+    font-size:22px;
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    z-index:4;
+  }
+  .lightbox-nav.prev{ left:6px; }
+  .lightbox-nav.next{ right:6px; }
+  .lightbox-bottom{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:14px;
+    margin-top:16px;
+    flex-wrap:wrap;
+  }
+  .lightbox-counter{ color:var(--muted); font-size:13px; font-weight:700; }
+  .lightbox-select-btn{
+    display:flex;align-items:center;gap:8px;
+    background:rgba(255,255,255,.08);
+    border:1px solid var(--lavender);
+    color:#fff;
+    padding:12px 22px;
+    border-radius:999px;
+    font-size:15px;
+    font-weight:800;
+    cursor:pointer;
+  }
+  .lightbox-select-btn.selected{
+    background:linear-gradient(135deg, var(--violet), var(--violet-dark));
+    border-color:transparent;
   }
 
   @media (max-width: 600px){
@@ -652,7 +710,15 @@
 
 <div class="lightbox" id="lightbox">
   <button class="lightbox-close" id="lightbox-close">✕</button>
-  <img id="lightbox-img" src="" alt="">
+  <div class="lightbox-img-wrap" id="lightbox-img-wrap">
+    <button class="lightbox-nav prev" id="lightbox-prev">‹</button>
+    <img id="lightbox-img" src="" alt="">
+    <button class="lightbox-nav next" id="lightbox-next">›</button>
+  </div>
+  <div class="lightbox-bottom">
+    <span class="lightbox-counter" id="lightbox-counter"></span>
+    <button class="lightbox-select-btn" id="lightbox-select-btn">☐ Elegir esta foto</button>
+  </div>
 </div>
 </div><!-- /app-content -->
 
@@ -765,6 +831,10 @@ function buildSet(count){
 }
 
 let PHOTOS = [];
+// Cachea las imágenes ya marcadas con agua (por foto y tamaño) para no
+// tener que volver a descargarlas/procesarlas cada vez que se re-dibuja
+// la grilla (por ejemplo, al tildar una foto).
+const watermarkCache = {};
 let nextPhotoNum = 1;
 let photosAreDemo = false;
 let photosLoading = true;
@@ -1053,6 +1123,7 @@ function render(){
     const priceLabel = modes.map(m => (m==='digital' && docenteMode) ? 'Gratis' : '$'+settings[m+'Price']).join(' / ');
     const div = document.createElement('div');
     div.className = 'frame' + (isSel ? ' selected':'');
+    div.dataset.id = photo.id;
     div.innerHTML = `
       <img class="frame-img" alt="${photo.id}" oncontextmenu="return false" loading="lazy">
       <svg class="circle-mark" viewBox="0 0 100 75">
@@ -1060,17 +1131,29 @@ function render(){
           fill="none" stroke="#aeabf5" stroke-width="2.5" opacity="0.85"/>
       </svg>
       <button class="zoom-btn" title="Ver más grande">🔍</button>
-      <div class="badge">${isSel ? '✓' : ''}</div>
+      <div class="badge" title="Elegir esta foto">${isSel ? '✓' : ''}</div>
       <div class="frame-label"><span>${photo.id}</span><span class="frame-price">${priceLabel}</span></div>
     `;
-    div.addEventListener('click', ()=> toggleSelect(photo));
-    div.querySelector('.zoom-btn').addEventListener('click', (e)=>{
+    // Tocar la foto la amplía (más fácil de acertar en el celular que un
+    // botón chiquito). Tocar el círculo de arriba a la derecha la elige.
+    div.querySelector('.frame-img').addEventListener('click', ()=> openLightbox(photo));
+    div.querySelector('.badge').addEventListener('click', (e)=>{
       e.stopPropagation();
-      openLightbox(photo);
+      toggleSelect(photo);
     });
-    loadWatermarked(photo.url, dataUrl=>{ div.querySelector('.frame-img').src = dataUrl; }, 700);
+    loadWatermarked(photo.url, photo.id, 700, dataUrl=>{ div.querySelector('.frame-img').src = dataUrl; });
     grid.appendChild(div);
   });
+}
+
+// Actualiza SOLO el recuadro de una foto puntual (borde violeta + tilde),
+// sin reconstruir toda la grilla ni volver a pedir las imágenes de nuevo.
+function updateFrameVisual(photo){
+  const div = grid.querySelector(`.frame[data-id="${CSS.escape(photo.id)}"]`);
+  if(!div) return;
+  const isSel = !!selected[photo.id];
+  div.classList.toggle('selected', isSel);
+  div.querySelector('.badge').textContent = isSel ? '✓' : '';
 }
 
 function updatePriceLegend(){
@@ -1134,34 +1217,107 @@ function watermarkedDataUrl(img, label, maxSize){
   return canvas.toDataURL('image/jpeg', 0.85);
 }
 
-function loadWatermarked(url, onReady, maxSize){
+function loadWatermarked(url, cacheId, maxSize, onReady){
+  const cacheKey = cacheId + ':' + maxSize;
+  if(cacheId && watermarkCache[cacheKey]){
+    onReady(watermarkCache[cacheKey]);
+    return;
+  }
   const img = new Image();
   img.crossOrigin = 'anonymous';
   img.onload = ()=>{
+    let result;
     try{
-      onReady(watermarkedDataUrl(img, watermarkLabel(), maxSize));
+      result = watermarkedDataUrl(img, watermarkLabel(), maxSize);
     }catch(err){
       // Si el navegador bloquea el canvas por CORS, mostramos el original
       // como respaldo (mejor eso que una foto rota, aunque en ese caso
       // se pierde la protección de la marca de agua).
-      onReady(url);
+      result = url;
     }
+    if(cacheId) watermarkCache[cacheKey] = result;
+    onReady(result);
   };
   img.onerror = ()=> onReady(url);
   img.src = url;
 }
 
+// --- Lightbox tipo carrusel: se abre en una foto, y desde ahí se puede
+// pasar a la siguiente/anterior (swipe o flechas) y elegirla sin cerrar. ---
+let lightboxIndex = -1;
+
 function openLightbox(photo){
+  const idx = PHOTOS.findIndex(p => p.id === photo.id);
+  showLightboxAt(idx < 0 ? 0 : idx);
+  document.getElementById('lightbox').classList.add('open');
+}
+
+function showLightboxAt(idx){
+  if(PHOTOS.length === 0) return;
+  lightboxIndex = ((idx % PHOTOS.length) + PHOTOS.length) % PHOTOS.length;
+  const photo = PHOTOS[lightboxIndex];
   const imgEl = document.getElementById('lightbox-img');
   imgEl.src = '';
-  document.getElementById('lightbox').classList.add('open');
-  loadWatermarked(photo.url, dataUrl=>{ imgEl.src = dataUrl; }, 1400);
+  loadWatermarked(photo.url, photo.id, 1400, dataUrl=>{
+    if(lightboxIndex === PHOTOS.indexOf(photo)) imgEl.src = dataUrl;
+  });
+  document.getElementById('lightbox-counter').textContent = (lightboxIndex+1) + ' / ' + PHOTOS.length;
+  updateLightboxSelectBtn();
 }
+
+function updateLightboxSelectBtn(){
+  const photo = PHOTOS[lightboxIndex];
+  if(!photo) return;
+  const btn = document.getElementById('lightbox-select-btn');
+  const isSel = !!selected[photo.id];
+  btn.classList.toggle('selected', isSel);
+  btn.textContent = isSel ? '✓ Elegida' : '☐ Elegir esta foto';
+}
+
+document.getElementById('lightbox-prev').addEventListener('click', (e)=>{
+  e.stopPropagation();
+  showLightboxAt(lightboxIndex - 1);
+});
+document.getElementById('lightbox-next').addEventListener('click', (e)=>{
+  e.stopPropagation();
+  showLightboxAt(lightboxIndex + 1);
+});
+document.getElementById('lightbox-select-btn').addEventListener('click', (e)=>{
+  e.stopPropagation();
+  const photo = PHOTOS[lightboxIndex];
+  if(photo){ toggleSelect(photo); updateLightboxSelectBtn(); }
+});
 document.getElementById('lightbox-close').addEventListener('click', ()=>{
   document.getElementById('lightbox').classList.remove('open');
 });
 document.getElementById('lightbox').addEventListener('click', (e)=>{
   if(e.target.id === 'lightbox') document.getElementById('lightbox').classList.remove('open');
+});
+
+// Deslizar con el dedo para pasar de foto (celular).
+(function(){
+  const wrap = document.getElementById('lightbox-img-wrap');
+  let startX = null, startY = null;
+  wrap.addEventListener('touchstart', (e)=>{
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  }, {passive:true});
+  wrap.addEventListener('touchend', (e)=>{
+    if(startX === null) return;
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+    if(Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)){
+      showLightboxAt(lightboxIndex + (dx < 0 ? 1 : -1));
+    }
+    startX = null; startY = null;
+  }, {passive:true});
+})();
+
+document.addEventListener('keydown', (e)=>{
+  if(!document.getElementById('lightbox').classList.contains('open')) return;
+  if(e.key === 'ArrowRight') showLightboxAt(lightboxIndex + 1);
+  if(e.key === 'ArrowLeft') showLightboxAt(lightboxIndex - 1);
+  if(e.key === 'Escape') document.getElementById('lightbox').classList.remove('open');
 });
 
 function toggleSelect(photo){
@@ -1173,7 +1329,8 @@ function toggleSelect(photo){
     formatChoice[photo.id] = defaultFormatChoice();
   }
   updateCartBar();
-  render();
+  updateFrameVisual(photo);
+  if(document.getElementById('lightbox').classList.contains('open')) updateLightboxSelectBtn();
 }
 
 function updateCartBar(){
@@ -1674,7 +1831,7 @@ function renderCartItems(){
     return `
       <div class="cart-item">
         <div class="row1">
-          <img class="cart-thumb" data-url="${p.url}" oncontextmenu="return false">
+          <img class="cart-thumb" data-url="${p.url}" data-id="${p.id}" oncontextmenu="return false">
           <div class="info">${p.id}</div>
           <button class="rm" data-id="${p.id}">✕</button>
         </div>
@@ -1684,7 +1841,7 @@ function renderCartItems(){
   }).join('');
 
   wrap.querySelectorAll('.cart-thumb').forEach(el=>{
-    loadWatermarked(el.dataset.url, dataUrl=>{ el.src = dataUrl; }, 200);
+    loadWatermarked(el.dataset.url, el.dataset.id, 200, dataUrl=>{ el.src = dataUrl; });
   });
 
   wrap.querySelectorAll('.rm').forEach(b=>{
